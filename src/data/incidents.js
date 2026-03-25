@@ -1,0 +1,28 @@
+// Historical incident records
+export const incidents = [
+  { id: 'INC-001', type: 'Person on Track', location: 'Track Section A', severity: 'critical', timestamp: '2026-03-25T14:30:00', status: 'resolved', camera: 'CAM-011', description: 'Individual detected crossing active track area. Emergency alert triggered.', responseTime: '45s' },
+  { id: 'INC-002', type: 'Overcrowding', location: 'Platform 1 - North', severity: 'warning', timestamp: '2026-03-25T13:15:00', status: 'resolved', camera: 'CAM-001', description: 'Platform crowd density exceeded 85% threshold during peak hours.', responseTime: '2m 10s' },
+  { id: 'INC-003', type: 'Unattended Baggage', location: 'Waiting Area', severity: 'warning', timestamp: '2026-03-25T12:00:00', status: 'resolved', camera: 'CAM-007', description: 'Unattended luggage detected for >5 minutes near seating zone B.', responseTime: '1m 30s' },
+  { id: 'INC-004', type: 'Suspicious Behaviour', location: 'Entry Gate A', severity: 'info', timestamp: '2026-03-25T11:45:00', status: 'monitoring', camera: 'CAM-004', description: 'Individual loitering near entry gate for extended period. Under observation.', responseTime: '3m 05s' },
+  { id: 'INC-005', type: 'Person on Track', location: 'Footbridge', severity: 'critical', timestamp: '2026-03-25T10:20:00', status: 'resolved', camera: 'CAM-008', description: 'Unauthorized access to restricted track-side area from footbridge.', responseTime: '30s' },
+  { id: 'INC-006', type: 'Overcrowding', location: 'Platform 2 - Central', severity: 'warning', timestamp: '2026-03-25T09:30:00', status: 'resolved', camera: 'CAM-003', description: 'Morning rush hour crowd density spike detected.', responseTime: '1m 45s' },
+  { id: 'INC-007', type: 'Unauthorized Access', location: 'Track Zone', severity: 'critical', timestamp: '2026-03-25T08:15:00', status: 'resolved', camera: 'CAM-011', description: 'Maintenance staff entered track without clearance signal.', responseTime: '20s' },
+  { id: 'INC-008', type: 'Suspicious Behaviour', location: 'Platform 1 - South', severity: 'info', timestamp: '2026-03-24T22:30:00', status: 'resolved', camera: 'CAM-002', description: 'Individual moving erratically near platform edge during low-traffic hours.', responseTime: '1m 15s' },
+  { id: 'INC-009', type: 'Unattended Baggage', location: 'Ticket Counter', severity: 'warning', timestamp: '2026-03-24T18:00:00', status: 'resolved', camera: 'CAM-006', description: 'Bag left unattended near counter 3 for 8 minutes.', responseTime: '2m 00s' },
+  { id: 'INC-010', type: 'Person on Track', location: 'Platform 3 - East', severity: 'critical', timestamp: '2026-03-24T16:45:00', status: 'resolved', camera: 'CAM-010', description: 'Child detected near track edge. Guardian alerted immediately.', responseTime: '15s' },
+  { id: 'INC-011', type: 'Overcrowding', location: 'Main Hall', severity: 'warning', timestamp: '2026-03-24T15:30:00', status: 'resolved', camera: 'CAM-006', description: 'Festival crowd caused hall occupancy to exceed safe limits.', responseTime: '4m 30s' },
+  { id: 'INC-012', type: 'Suspicious Behaviour', location: 'Parking Area', severity: 'info', timestamp: '2026-03-24T14:00:00', status: 'resolved', camera: 'CAM-009', description: 'Vehicle parked in restricted zone for extended period.', responseTime: '5m 00s' },
+  { id: 'INC-013', type: 'Track Obstruction', location: 'Track Section A', severity: 'critical', timestamp: '2026-03-24T11:00:00', status: 'resolved', camera: 'CAM-011', description: 'Foreign object detected on track. Train halt initiated.', responseTime: '10s' },
+  { id: 'INC-014', type: 'Overcrowding', location: 'Entry Gate B', severity: 'warning', timestamp: '2026-03-24T09:00:00', status: 'resolved', camera: 'CAM-005', description: 'Entry bottleneck caused by single-gate operation during rush hour.', responseTime: '3m 20s' },
+  { id: 'INC-015', type: 'Unattended Baggage', location: 'Platform 2 - Central', severity: 'warning', timestamp: '2026-03-23T20:00:00', status: 'resolved', camera: 'CAM-003', description: 'Toolbox left by maintenance crew without tagging.', responseTime: '6m 00s' },
+  { id: 'INC-016', type: 'Person on Track', location: 'Track Zone', severity: 'critical', timestamp: '2026-03-23T17:30:00', status: 'resolved', camera: 'CAM-011', description: 'Trespasser detected at kilometer marker 14.5.', responseTime: '25s' },
+  { id: 'INC-017', type: 'Suspicious Behaviour', location: 'Footbridge', severity: 'info', timestamp: '2026-03-23T15:00:00', status: 'resolved', camera: 'CAM-008', description: 'Person filming restricted infrastructure from footbridge.', responseTime: '2m 45s' },
+  { id: 'INC-018', type: 'Overcrowding', location: 'Platform 1 - North', severity: 'warning', timestamp: '2026-03-23T12:00:00', status: 'resolved', camera: 'CAM-001', description: 'Train delay caused platform crowding beyond 90% capacity.', responseTime: '1m 00s' },
+  { id: 'INC-019', type: 'Unauthorized Access', location: 'Emergency Exit', severity: 'warning', timestamp: '2026-03-23T10:30:00', status: 'resolved', camera: 'CAM-012', description: 'Emergency exit opened without alarm trigger. Hardware fault identified.', responseTime: '1m 20s' },
+  { id: 'INC-020', type: 'Person on Track', location: 'Platform 1 - South', severity: 'critical', timestamp: '2026-03-23T08:00:00', status: 'resolved', camera: 'CAM-002', description: 'Worker stepped onto track during non-scheduled maintenance window.', responseTime: '35s' },
+];
+
+// Unique values for filters
+export const incidentTypes = [...new Set(incidents.map(i => i.type))];
+export const incidentLocations = [...new Set(incidents.map(i => i.location))];
+export const severityLevels = ['critical', 'warning', 'info'];
