@@ -13,6 +13,7 @@ import AlertPanel from '../components/alerts/AlertPanel';
 import { cameras } from '../data/cameras';
 import { kpiData, crowdDensityData, heatmapZones } from '../data/analytics';
 import useAlertStore from '../store/useAlertStore';
+import { API_BASE } from '../config';
 
 /**
  * Dashboard — Main monitoring hub with live feeds, alerts, heatmap, and KPIs.
@@ -121,10 +122,10 @@ export default function Dashboard() {
         <GlassCard hoverable={false} className="p-5">
           <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
             <Activity className="w-4 h-4 text-cyber" />
-            Platform Crowd Density (Today)
+            Platform Crowd Density — Live (Today)
           </h3>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={crowdDensityData.slice(4, 14)} barGap={1}>
+            <BarChart data={crowdDensityData} barGap={1}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1E2D4A" />
               <XAxis dataKey="time" tick={{ fill: '#8892A5', fontSize: 11 }} axisLine={{ stroke: '#1E2D4A' }} />
               <YAxis tick={{ fill: '#8892A5', fontSize: 11 }} axisLine={{ stroke: '#1E2D4A' }} />
@@ -158,9 +159,20 @@ function CameraFeedCard({ camera }) {
   return (
     <div className="glass-card overflow-hidden group relative camera-frame scan-line-overlay">
       {/* Simulated feed background */}
-      <div className="aspect-video bg-gradient-to-br from-slate-800 via-gray-900 to-slate-800 relative overflow-hidden">
+      <div className="aspect-video bg-black relative overflow-hidden">
+        {isOnline && (
+          <img
+            src={`${API_BASE}/stream/${camera.id}`}
+            className="w-full h-full object-cover"
+            onError={(e) => { e.target.style.display='none'; }}
+          />
+        )}
+        {!isOnline && (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-gray-900 to-slate-800" />
+        )}
+
         {/* Noise pattern */}
-        <div className="absolute inset-0 opacity-20" style={{
+        <div className="absolute inset-0 opacity-20 pointer-events-none" style={{
           backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,224,255,0.03) 2px, rgba(0,224,255,0.03) 4px)`
         }} />
 

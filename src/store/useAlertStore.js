@@ -31,6 +31,28 @@ const useAlertStore = create((set, get) => ({
   // Clear all toasts
   clearToasts: () => set({ toasts: [] }),
 
+  // Connect WebSocket for real-time alerts
+  connectWebSocket: () => {
+    import('../config.js').then(({ WS_BASE }) => {
+      const ws = new WebSocket(`${WS_BASE}/ws/alerts`);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type && data.type !== 'connected') {
+            get().addAlert({ ...data, id: Date.now().toString(), acknowledged: false });
+          }
+        } catch (e) {
+          console.error('WS parse error:', e);
+        }
+      };
+      ws.onerror = (e) => console.error("WebSocket error", e);
+      ws.onclose = () => {
+        console.log("WebSocket closed, retrying in 5s...");
+        setTimeout(() => get().connectWebSocket(), 5000);
+      };
+    });
+  },
+
   // Simulate incoming alerts (replaces WebSocket in demo)
   startSimulation: () => {
     const interval = setInterval(() => {

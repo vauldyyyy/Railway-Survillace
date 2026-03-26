@@ -1,24 +1,37 @@
-import React, { useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
-import { Bell, Search, Clock, Wifi } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
+import { Bell, Search, Clock, Wifi, AlertTriangle } from 'lucide-react';
 import Sidebar from './Sidebar';
 import AlertToastContainer from '../alerts/AlertToastContainer';
 import useAppStore from '../../store/useAppStore';
 import useAlertStore from '../../store/useAlertStore';
+import { API_BASE } from '../../config';
 
 export default function Layout() {
-  const { sidebarOpen, currentTime, updateTime } = useAppStore();
+  const { sidebarOpen, currentTime, updateTime, toggleSidebar } = useAppStore();
   const alerts = useAlertStore((s) => s.alerts);
   const unacknowledged = alerts.filter(a => !a.acknowledged).length;
+  const navigate = useNavigate();
+  const [backendOffline, setBackendOffline] = useState(false);
+  const [dismissOffline, setDismissOffline] = useState(false);
 
   // Clock and alert simulation
   useEffect(() => {
     const clockInterval = setInterval(updateTime, 1000);
-    const alertInterval = useAlertStore.getState().startSimulation();
-    return () => {
-      clearInterval(clockInterval);
-      clearInterval(alertInterval);
-    };
+    
+    // Check Backend Health
+    fetch(`${API_BASE}/health`)
+      .then(res => {
+        if (!res.ok) throw new Error('Offline');
+        useAlertStore.getState().connectWebSocket();
+      })
+      .catch(() => {
+        setBackendOffline(true);
+        // Fallback to simulation interval
+        useAlertStore.getState().startSimulation();
+      });
+
+    return () => clearInterval(clockInterval);
   }, []);
 
   const formatTime = (date) => {
@@ -31,6 +44,12 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-bg-primary noise-bg">
       <Sidebar />
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={toggleSidebar}
+        />
+      )}
       
       {/* Main content area */}
       <div
@@ -65,7 +84,10 @@ export default function Layout() {
               </div>
 
               {/* Alert bell */}
-              <button className="relative p-2 rounded-lg hover:bg-bg-hover transition-colors group">
+              <button 
+                className="relative p-2 rounded-lg hover:bg-bg-hover transition-colors group"
+                onClick={() => navigate('/')}
+              >
                 <Bell className="w-5 h-5 text-text-secondary group-hover:text-cyber transition-colors" />
                 {unacknowledged > 0 && (
                   <span className="absolute -top-0.5 -right-0.5 w-5 h-5 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center animate-pulse-glow">
@@ -79,6 +101,17 @@ export default function Layout() {
 
         {/* Page content */}
         <main className="p-4 md:p-6">
+          {backendOffline && !dismissOffline && (
+            <div 
+              className="mb-4 flex items-center gap-2 p-3 bg-warning/20 border border-warning/30 rounded-lg cursor-pointer hover:bg-warning/30 transition-colors"
+              onClick={() => setDismissOffline(true)}
+            >
+              <AlertTriangle className="w-5 h-5 text-warning" />
+              <span className="text-sm font-medium text-warning">
+                ⚠ Backend offline — showing demo data. Click to dismiss.
+              </span>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

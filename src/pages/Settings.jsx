@@ -1,13 +1,27 @@
-import React from 'react';
-import { Settings as SettingsIcon, Bell, Shield, Monitor, Cpu, Database, Clock, Wifi } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings as SettingsIcon, Bell, Shield, Monitor, Cpu, Database, Clock, Wifi, Box } from 'lucide-react';
 import GlassCard from '../components/ui/GlassCard';
 import useAppStore from '../store/useAppStore';
+import { API_BASE } from '../config';
 
 /**
  * Settings — System configuration and preferences.
  */
 export default function Settings() {
   const { systemStatus } = useAppStore();
+  const [modelStatus, setModelStatus] = useState(null);
+
+  useEffect(() => {
+    const fetchStatus = () => {
+      fetch(`${API_BASE}/api/model-status`)
+        .then(r => r.json())
+        .then(data => setModelStatus(data))
+        .catch(() => setModelStatus(null));
+    };
+    fetchStatus();
+    const iv = setInterval(fetchStatus, 5000);
+    return () => clearInterval(iv);
+  }, []);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -76,6 +90,33 @@ export default function Settings() {
             <InfoRow icon={Clock} label="System Uptime" value={systemStatus.uptime} status="active" />
             <InfoRow icon={Shield} label="System Health" value={`${systemStatus.systemHealth}%`} status="active" />
             <InfoRow icon={Monitor} label="Active Cameras" value="11 / 12" status="warning" />
+          </div>
+        </GlassCard>
+
+        {/* AI Model Status */}
+        <GlassCard hoverable={false} className="p-5">
+          <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
+            <Box className="w-4 h-4 text-cyber" />
+            AI Model Status
+          </h3>
+          <div className="space-y-3">
+            {modelStatus ? (
+              Object.entries(modelStatus).map(([name, info]) => (
+                <div key={name} className="flex items-center justify-between py-2 border-b border-border-subtle/30 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-text-primary uppercase">{name}</span>
+                    {info.loaded ? (
+                      <span className="text-[10px] bg-success/20 text-success border border-success/30 px-1.5 py-0.5 rounded font-bold">LOADED</span>
+                    ) : (
+                      <span className="text-[10px] bg-danger/20 text-danger border border-danger/30 px-1.5 py-0.5 rounded font-bold">OFFLINE</span>
+                    )}
+                  </div>
+                  <span className="text-xs font-mono text-text-muted">{info.inference_ms} ms</span>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-text-muted italic">Connecting to model service...</p>
+            )}
           </div>
         </GlassCard>
       </div>

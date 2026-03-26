@@ -5,6 +5,7 @@ import StatusBadge from '../components/ui/StatusBadge';
 import Modal from '../components/ui/Modal';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
 import { cameras } from '../data/cameras';
+import { API_BASE } from '../config';
 
 /**
  * Cameras — Multi-camera management grid with fullscreen expand.
@@ -104,9 +105,20 @@ function CameraCard({ camera, onClick }) {
   return (
     <div onClick={onClick} className="glass-card overflow-hidden group cursor-pointer camera-frame scan-line-overlay">
       {/* Feed area */}
-      <div className="aspect-video bg-gradient-to-br from-slate-800 via-gray-900 to-slate-800 relative overflow-hidden">
+      <div className="aspect-video bg-black relative overflow-hidden">
+        {isOnline && (
+          <img
+            src={`${API_BASE}/stream/${camera.id}`}
+            className="w-full h-full object-cover"
+            onError={(e) => { e.target.style.display='none'; }}
+          />
+        )}
+        {!isOnline && (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-gray-900 to-slate-800" />
+        )}
+
         {/* Scan lines */}
-        <div className="absolute inset-0 opacity-10" style={{
+        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{
           backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,224,255,0.05) 2px, rgba(0,224,255,0.05) 4px)`
         }} />
 
@@ -206,8 +218,18 @@ function CameraExpandedView({ camera }) {
   return (
     <div className="space-y-4">
       {/* Large feed */}
-      <div className="aspect-video bg-gradient-to-br from-slate-800 via-gray-900 to-slate-800 rounded-lg relative overflow-hidden camera-frame scan-line-overlay">
-        <div className="absolute inset-0 opacity-10" style={{
+      <div className="aspect-video bg-black rounded-lg relative overflow-hidden camera-frame scan-line-overlay">
+        {isOnline && (
+          <img
+            src={`${API_BASE}/stream/${camera.id}`}
+            className="w-full h-full object-cover"
+            onError={(e) => { e.target.style.display='none'; }}
+          />
+        )}
+        {!isOnline && (
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-gray-900 to-slate-800" />
+        )}
+        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{
           backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,224,255,0.04) 3px, rgba(0,224,255,0.04) 6px)`
         }} />
 
