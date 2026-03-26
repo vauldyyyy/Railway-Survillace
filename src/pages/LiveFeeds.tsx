@@ -6,39 +6,24 @@ const CAMERAS = [
   {
     id: "CAM-01: MAIN CONCOURSE",
     active: true,
-    image: "https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&q=80&w=800",
-    overlay: (
-      <>
-        <div className="absolute top-1/4 left-1/3 w-24 h-48 border border-cyan-400/50 bg-cyan-400/10">
-          <div className="absolute -top-5 left-0 bg-cyan-400/80 text-[#0B0F19] text-[10px] px-1 font-mono font-bold">PERSON_902</div>
-        </div>
-        <div className="absolute top-1/2 left-[40%] w-16 h-16 border border-yellow-400/50 bg-yellow-400/10">
-          <div className="absolute -top-5 left-0 bg-yellow-400/80 text-[#0B0F19] text-[10px] px-1 font-mono font-bold">OBJ_77_BAG</div>
-        </div>
-      </>
-    ),
-    stats: { person: 14, obj: 2, fps: 60, time: '14:22:01:04' },
+    image: "http://localhost:8001/stream/CAM-01",
+    stats: { person: 0, obj: 0, fps: 0, time: 'LIVE' },
     zone: 'Concourse',
     type: 'Optical'
   },
   {
     id: "CAM-04: PLATFORM 2 WEST",
     warning: true,
-    image: "https://images.unsplash.com/photo-1584432810601-6c7f27d2362b?auto=format&fit=crop&q=80&w=800",
-    overlay: (
-      <div className="absolute top-1/3 left-1/4 right-1/4 bottom-1/3 border-2 border-red-500/50 border-dashed bg-red-500/5 flex items-center justify-center">
-        <div className="bg-red-500/80 text-white text-xs px-2 py-1 font-mono font-bold tracking-widest">THREAT_DETECTED</div>
-      </div>
-    ),
-    stats: { threat: 1, fps: 58, time: '14:22:01:04' },
+    image: "http://localhost:8001/stream/CAM-04",
+    stats: { threat: 0, fps: 0, time: 'LIVE' },
     zone: 'Platform',
     type: 'Optical'
   },
   {
     id: "CAM-07: PERIMETER FENCE (THERMAL)",
     thermal: true,
-    image: "https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&q=80&w=800",
-    stats: { heat: 0, fps: 30, time: '14:22:01:04' },
+    image: "http://localhost:8001/stream/CAM-07",
+    stats: { heat: 0, fps: 0, time: 'LIVE' },
     zone: 'Perimeter',
     type: 'Thermal'
   },

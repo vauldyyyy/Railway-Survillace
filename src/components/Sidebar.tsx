@@ -10,7 +10,9 @@ import {
   FileText, 
   Settings, 
   Bell,
-  LogOut
+  LogOut,
+  Activity,
+  HeartPulse
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Page } from '../App';
@@ -31,6 +33,8 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
     { id: 'security-layer', label: 'Security Layer', icon: Shield },
     { id: 'incident-reports', label: 'Incident Reports', icon: FileText },
     { id: 'system-config', label: 'System Config', icon: Settings },
+    { id: 'model-dashboard', label: 'Model Dashboard', icon: Activity },
+    { id: 'ai-health', label: 'AI Health', icon: HeartPulse },
     { id: 'notifications', label: 'Notifications', icon: Bell },
   ];
 

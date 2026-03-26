@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Overview } from './pages/Overview';
 import { LiveFeeds } from './pages/LiveFeeds';
@@ -11,11 +11,25 @@ import { IncidentReports } from './pages/IncidentReports';
 import { SystemConfig } from './pages/SystemConfig';
 import { Notifications } from './pages/Notifications';
 import { Profile } from './pages/Profile';
+import { ModelDashboard } from './pages/ModelDashboard';
+import { AIHealthMonitor } from './pages/AIHealthMonitor';
+import { startMetricsSimulation } from './store/useSystemStore';
+import useAlertStore from './store/useAlertStore.ts';
 
-export type Page = 'overview' | 'live-feeds' | 'threat-alerts' | 'person-tracking' | 'crowd-analytics' | 'ai-agents' | 'security-layer' | 'incident-reports' | 'system-config' | 'notifications' | 'profile';
+export type Page = 'overview' | 'live-feeds' | 'threat-alerts' | 'person-tracking' | 'crowd-analytics' | 'ai-agents' | 'security-layer' | 'incident-reports' | 'system-config' | 'notifications' | 'profile' | 'model-dashboard' | 'ai-health';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('overview');
+
+  // Start live simulations on mount
+  useEffect(() => {
+    const metricsInterval = startMetricsSimulation();
+    const alertInterval = useAlertStore.getState().startSimulation();
+    return () => {
+      clearInterval(metricsInterval);
+      clearInterval(alertInterval);
+    };
+  }, []);
 
   const renderPage = () => {
     switch (currentPage) {
@@ -30,6 +44,8 @@ function App() {
       case 'system-config': return <SystemConfig onNavigate={setCurrentPage} />;
       case 'notifications': return <Notifications onNavigate={setCurrentPage} />;
       case 'profile': return <Profile onNavigate={setCurrentPage} />;
+      case 'model-dashboard': return <ModelDashboard onNavigate={setCurrentPage} />;
+      case 'ai-health': return <AIHealthMonitor onNavigate={setCurrentPage} />;
       default: return <div className="p-8 text-slate-400">Page under construction</div>;
     }
   };

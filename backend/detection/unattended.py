@@ -1,38 +1,34 @@
 """
-unattended.py — Tracks person + bag associations across frames using DeepSORT.
+unattended.py — Tracks person + bag associations using provided Track IDs.
 """
 import time
 import cv2
 import numpy as np
-from deep_sort_realtime.deepsort_tracker import DeepSort
 
 class UnattendedBaggageTracker:
     def __init__(self, threshold_seconds=15):
         self.threshold_seconds = threshold_seconds
-        self.tracker = DeepSort(max_age=30, n_init=3, nms_max_overlap=1.0)
         # bag_id -> {"box": [], "first_seen": ts, "last_person_near": ts, "last_seen": ts}
         self.bag_registry = {}
 
-    def update(self, frame, detections_for_tracker, camera_id):
+    def update(self, frame, tracks, camera_id):
         alerts = []
         now = time.time()
-        
-        # detections_for_tracker = [([x, y, w, h], conf, class_id), ...]
-        tracks = self.tracker.update_tracks(detections_for_tracker, frame=frame)
         
         persons = []
         bags = []
         
+        # tracks = [{"id": track_id, "class_id": cls, "box": [x1, y1, x2, y2]}, ...]
         for track in tracks:
-            if not track.is_confirmed() or track.time_since_update > 1:
+            track_id = track.get("id")
+            if track_id is None:
                 continue
             
-            track_id = track.track_id
-            class_id = track.det_class
-            ltrb = track.to_ltrb() # x1, y1, x2, y2
+            class_id = track["class_id"]
+            ltrb = track["box"]
             
             if class_id == 0: # person
-                persons.append(ltrb)
+                persons.append((track_id, ltrb))
             else: # bag
                 bags.append((track_id, ltrb))
 
@@ -51,7 +47,7 @@ class UnattendedBaggageTracker:
 
             # Check if any person is near
             person_nearby = False
-            for px1, py1, px2, py2 in persons:
+            for pid, (px1, py1, px2, py2) in persons:
                 pcx, pcy = (px1 + px2) / 2, (py1 + py2) / 2
                 dist = np.sqrt((bcx - pcx)**2 + (bcy - pcy)**2)
                 if dist < 120:  # ~120 pixel radius threshold
@@ -65,7 +61,7 @@ class UnattendedBaggageTracker:
                 if duration > self.threshold_seconds:
                     alerts.append({
                         "type": "Unattended Baggage",
-                        "severity": "warning",
+                        "severity": "critical",
                         "camera": camera_id,
                         "details": {"duration_s": int(duration), "box": [int(x) for x in ltrb]},
                         "ts": now
@@ -74,4 +70,4 @@ class UnattendedBaggageTracker:
         # Cleanup old entries (not seen for > 2 seconds)
         self.bag_registry = {k: v for k, v in self.bag_registry.items() if now - v["last_seen"] < 2}
         
-        return tracks, alerts
+        return alerts
