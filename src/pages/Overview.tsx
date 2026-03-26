@@ -104,19 +104,24 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
+              
+              {/* CAM 1: LOCAL WEBCAM (FASTAPI) */}
               <CameraFeed 
                 id="CAM_01_SOUTH" 
                 time="24.01.26 14:42:01" 
-                threat="UNKNOWN_ID" 
+                threat="SCANNING..." 
                 confidence={94.2} 
-                image="https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=800"
+                image="http://localhost:8000/video/cam1"
               />
+              
+              {/* CAM 4: YOUTUBE LIVE STREAM (FASTAPI) */}
               <CameraFeed 
                 id="CAM_04_NORTH" 
                 time="24.01.26 14:42:02" 
-                status="NOMINAL" 
-                image="https://images.unsplash.com/photo-1584432810601-6c7f27d2362b?auto=format&fit=crop&q=80&w=800"
+                status="LIVE" 
+                image="http://localhost:8000/video/cam4" 
               />
+              
               <CameraFeed 
                 id="CAM_09_ENTRANCE" 
                 time="24.01.26 14:42:02" 
