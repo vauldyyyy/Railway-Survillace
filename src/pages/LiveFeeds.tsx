@@ -6,7 +6,7 @@ const CAMERAS = [
   {
     id: "CAM-01: MAIN CONCOURSE",
     active: true,
-    image: "http://localhost:8001/stream/CAM-01",
+    image: "http://127.0.0.1:8001/stream/cam1",
     stats: { person: 0, obj: 0, fps: 0, time: 'LIVE' },
     zone: 'Concourse',
     type: 'Optical'
@@ -14,7 +14,7 @@ const CAMERAS = [
   {
     id: "CAM-04: PLATFORM 2 WEST",
     warning: true,
-    image: "http://localhost:8001/stream/CAM-04",
+    image: "http://127.0.0.1:8001/stream/cam4",
     stats: { threat: 0, fps: 0, time: 'LIVE' },
     zone: 'Platform',
     type: 'Optical'
@@ -22,7 +22,7 @@ const CAMERAS = [
   {
     id: "CAM-07: PERIMETER FENCE (THERMAL)",
     thermal: true,
-    image: "http://localhost:8001/stream/CAM-07",
+    image: "http://127.0.0.1:8001/stream/cam7",
     stats: { heat: 0, fps: 0, time: 'LIVE' },
     zone: 'Perimeter',
     type: 'Thermal'

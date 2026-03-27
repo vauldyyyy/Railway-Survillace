@@ -6,3 +6,18 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Environment
+.venv/
+__pycache__/
+*.pyc
+
+# Datasets and Models
+backend/datasets/
+datasets/
+backend/models/
+backend/yolov8s-worldv2.pt
+yolov8s.pt
+backend/scripts/__pycache__/
+debug_import.py
+trace_log.txt

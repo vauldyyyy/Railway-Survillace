@@ -31,11 +31,8 @@ class SurveillancePipeline:
             alerts (list): High-priority threat dictionaries
             trajectories (dict): UUID to spatial path mappings
         """
-        # 0. Apply Extreme Optical Blur / Smoke Lens Corruption (Hackathon Demo Requirement)
-        frame = cv2.GaussianBlur(frame, (99, 99), 15)
+        # Start with a clean copy of the frame for annotation
         annotated_frame = frame.copy()
-        cv2.putText(annotated_frame, "[SIMULATED SENSOR CORRUPTION : HEAVY BLUR]", (10, 60), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         
         alerts = []
         

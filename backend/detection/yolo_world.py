@@ -11,15 +11,23 @@ class ZeroShotDetector:
             self.model = None
 
         # Pre-configured Master Text Prompts for Railway Environment
+        # Covers all threat categories: person, objects, fire, crowd, UAV
         self.default_classes = [
-            "unattended backpack on platform",
-            "person on railway track",
-            "metal debris on track",
-            "plastic bag on track",
-            "person loitering near platform edge",
-            "fire or smoke",
-            "suspicious abandoned luggage",
-            "person" # Required implicitly for the ReID Tracker pipeline
+            "person on railway track",           # Critical — track intrusion
+            "person near platform edge",         # Critical — fall risk
+            "metal debris on track",             # Critical — FOD
+            "plastic bag on track",              # Warning — debris
+            "stone or rock on track",            # Warning — FOD
+            "fire",                              # Critical — fire/smoke
+            "smoke",                             # Critical — fire/smoke
+            "unattended backpack on platform",   # Warning — abandoned baggage
+            "abandoned suitcase or luggage",     # Warning — abandoned baggage
+            "person fighting or brawling",       # Critical — suspicious
+            "crowd surge on platform",           # Warning — overcrowding
+            "animal on track",                   # Warning — animal intrusion
+            "person climbing fence",             # Critical — unauthorized
+            "drone or UAV in restricted area",   # Warning — aerial threat
+            "person",                            # Always required for ReID
         ]
         self.set_classes(self.default_classes)
 

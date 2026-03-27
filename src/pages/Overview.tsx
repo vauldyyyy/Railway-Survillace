@@ -116,7 +116,7 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
                 time="24.01.26 14:42:01" 
                 threat="SCANNING..." 
                 confidence={94.2} 
-                image="http://localhost:8000/video/cam1"
+                image="http://127.0.0.1:8001/stream/cam1"
               />
               
               {/* CAM 4: YOUTUBE LIVE STREAM (FASTAPI) */}
@@ -124,7 +124,7 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
                 id="CAM_04_NORTH" 
                 time="24.01.26 14:42:02" 
                 status="LIVE" 
-                image="http://localhost:8000/video/cam4" 
+                image="http://127.0.0.1:8001/stream/cam4" 
               />
               
               <CameraFeed 

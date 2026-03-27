@@ -58,6 +58,8 @@ const reasoningMap: Record<string, string[]> = {
 const locations = ['Platform 1 North', 'Platform 2 Central', 'Entry Gate A', 'Waiting Area', 'Track Section A', 'Footbridge', 'Ticket Counter', 'Entry Gate B', 'Platform 3 East', 'Parking Area'];
 const alertTypes = Object.keys(ALERT_TYPES);
 
+let _alertCounter = 0;
+
 function generateRandomAlert(): Alert {
   const type = alertTypes[Math.floor(Math.random() * alertTypes.length)];
   const typeConfig = ALERT_TYPES[type];
@@ -65,7 +67,7 @@ function generateRandomAlert(): Alert {
   const camNum = Math.floor(Math.random() * 12) + 1;
 
   return {
-    id: `ALR-${Date.now().toString(36).toUpperCase()}`,
+    id: `ALR-${Date.now().toString(36).toUpperCase()}${(++_alertCounter).toString(36).toUpperCase()}`,
     type,
     severity: typeConfig.severity,
     camera: `CAM_${String(camNum).padStart(2, '0')}`,

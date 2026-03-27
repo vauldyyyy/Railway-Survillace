@@ -1,61 +1,121 @@
 """
 run_all_training.py
-Automates the execution of RailFOD, UAV, and LSTM training.
-Handles the migration of best.pt weights to the models directory.
+Master orchestrator for the full RailGuard AI training pipeline.
+Runs all steps in order:
+  1. Generate crowd CSV data
+  2. Download YouTube datasets (yt-dlp)
+  3. Extract frames from all videos
+  4. Auto-label frames with YOLO-World
+  5. Build merged dataset
+  6. Train RailFOD YOLOv8s
+  7. Train UAV YOLOv8n
+  8. Train LSTM crowd forecaster
+  9. Validate all models
 """
 
 import subprocess
 import shutil
+import sys
 import os
+import time
 from pathlib import Path
 
-def run_script(script_path):
-    print(f"\n{'='*60}")
-    print(f"EXECUTING: {script_path.name}")
-    print(f"{'='*60}")
-    # We use a shell-like execution to ensure environmental variables/paths are inherited
-    process = subprocess.Popen(["python", str(script_path)], stdout=None, stderr=None)
-    process.wait()
-    
-    if process.returncode != 0:
-        print(f"[ERROR] {script_path.name} failed with return code {process.returncode}")
-        return False
-    return True
+BASE_DIR    = Path(__file__).resolve().parent
+SCRIPTS_DIR = BASE_DIR / "scripts"
 
-def main():
-    backend_dir = Path(__file__).resolve().parent
-    models_dir = backend_dir / "models"
+BOLD  = "\033[1m"
+GREEN = "\033[92m"
+RED   = "\033[91m"
+CYAN  = "\033[96m"
+RESET = "\033[0m"
+
+
+def banner(title: str):
+    print(f"\n{CYAN}{'='*60}{RESET}")
+    print(f"{BOLD}{CYAN}  {title}{RESET}")
+    print(f"{CYAN}{'='*60}{RESET}")
+
+
+def run(script: Path, label: str) -> bool:
+    banner(f"STEP: {label}")
+    t0 = time.time()
+    proc = subprocess.run([sys.executable, str(script)], cwd=str(BASE_DIR))
+    dt = time.time() - t0
+    if proc.returncode == 0:
+        print(f"{GREEN}  ✓ {label} completed in {dt:.0f}s{RESET}")
+        return True
+    else:
+        print(f"{RED}  ✗ {label} FAILED (code {proc.returncode}){RESET}")
+        return False
+
+
+def migrate_weights():
+    banner("STEP: Migrating weights to models/")
+    models_dir = BASE_DIR / "models"
     models_dir.mkdir(exist_ok=True)
 
-    # 1. Run All Training Scripts
-    training_scripts = [
-        backend_dir / "train_railfod.py",
-        backend_dir / "train_uav.py",
-        backend_dir / "train_lstm.py"
-    ]
+    runs_dir = BASE_DIR.parent / "runs" / "detect"
+    if not runs_dir.exists():
+        runs_dir = Path("runs") / "detect"
 
-    for script in training_scripts:
-        if not run_script(script):
-            print("Stopping automation due to script failure.")
-            return
-
-    # 2. Migration of Weights
-    # Ultralytics saves runs in the current working directory's 'runs' folder
-    runs_dir = Path.cwd() / "runs" / "detect"
-    
-    weight_maps = {
-        runs_dir / "railfod_cpu_run" / "weights" / "best.pt": models_dir / "railfod_best.pt",
-        runs_dir / "uav_cpu_run" / "weights" / "best.pt": models_dir / "uav_best.pt"
+    maps = {
+        "railfod_merged":    "railfod_best.pt",
+        "railfod_run":       "railfod_best.pt",
+        "uav_run":           "uav_best.pt",
     }
 
-    for src, dst in weight_maps.items():
+    for run_name, dest_name in maps.items():
+        src = runs_dir / run_name / "weights" / "best.pt"
+        dst = models_dir / dest_name
         if src.exists():
-            shutil.copy(src, dst)
-            print(f"[SUCCESS] Migrated {src.parent.parent.parent.name} weights to {dst}")
-        else:
-            print(f"[WARNING] Could not find weights at {src}")
+            shutil.copy(str(src), str(dst))
+            print(f"  {GREEN}✓ Migrated {run_name} → {dest_name}{RESET}")
 
-    print(f"\n{'='*60}\nALL TRAINING AND MIGRATION COMPLETED.\n{'='*60}")
+
+def print_final_summary():
+    banner("PIPELINE COMPLETE — MODEL SUMMARY")
+    models_dir = BASE_DIR / "models"
+    for f in sorted(models_dir.glob("*")):
+        size_mb = f.stat().st_size / 1_000_000
+        print(f"  {GREEN}✓{RESET} {f.name:<30} {size_mb:.1f} MB")
+    print(f"\n  {BOLD}Next step: restart the backend and check Model Dashboard.{RESET}")
+    print(f"  python backend/main.py")
+
+
+def main():
+    banner("RailGuard AI — Full Training Pipeline")
+    print(f"  Mode: CPU-optimized")
+    print(f"  Start: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    steps = [
+        (SCRIPTS_DIR / "generate_crowd_csv.py",      "Generate Crowd CSV Data"),
+        (SCRIPTS_DIR / "download_youtube_datasets.py","Download YouTube Datasets"),
+        (SCRIPTS_DIR / "extract_frames.py",           "Extract Video Frames"),
+        (SCRIPTS_DIR / "auto_label.py",               "Auto-Label Frames (YOLO-World)"),
+        (SCRIPTS_DIR / "build_merged_dataset.py",     "Build Merged Dataset"),
+        (BASE_DIR    / "train_railfod.py",            "Train RailFOD YOLOv8s (50 epochs)"),
+        (BASE_DIR    / "train_uav.py",                "Train UAV YOLOv8n (50 epochs)"),
+        (BASE_DIR    / "train_lstm.py",               "Train LSTM Crowd Forecaster"),
+    ]
+
+    failed = []
+    for script, label in steps:
+        if not script.exists():
+            print(f"\n  {RED}[SKIP] {label} — script not found: {script}{RESET}")
+            continue
+        ok = run(script, label)
+        if not ok:
+            failed.append(label)
+            print(f"  {RED}[WARN] Continuing despite failure in: {label}{RESET}")
+
+    migrate_weights()
+    print_final_summary()
+
+    if failed:
+        print(f"\n  {RED}Steps that failed: {failed}{RESET}")
+    else:
+        print(f"\n  {GREEN}All steps completed successfully!{RESET}")
+
 
 if __name__ == "__main__":
     main()

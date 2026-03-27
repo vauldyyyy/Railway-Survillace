@@ -86,20 +86,20 @@ const defaultModel = (name: string, fps: number, gpu: number): ModelMetrics => (
 });
 
 const defaultCameras: Record<string, CameraState> = {
-  'CAM_01': { id: 'CAM_01', label: 'Platform 1 South', status: 'online', last_frame_ts: Date.now(), person_count: 42, stream_url: 'http://localhost:8000/stream/cam1' },
-  'CAM_02': { id: 'CAM_02', label: 'Platform 1 North', status: 'online', last_frame_ts: Date.now(), person_count: 38, stream_url: 'http://localhost:8000/stream/cam2' },
-  'CAM_03': { id: 'CAM_03', label: 'Platform 2 Central', status: 'online', last_frame_ts: Date.now(), person_count: 55, stream_url: 'http://localhost:8000/stream/cam3' },
-  'CAM_04': { id: 'CAM_04', label: 'Entry Gate A', status: 'online', last_frame_ts: Date.now(), person_count: 21, stream_url: 'http://localhost:8000/stream/cam4' },
-  'CAM_05': { id: 'CAM_05', label: 'Footbridge', status: 'online', last_frame_ts: Date.now(), person_count: 15, stream_url: 'http://localhost:8000/stream/cam5' },
-  'CAM_06': { id: 'CAM_06', label: 'Track Section A', status: 'online', last_frame_ts: Date.now(), person_count: 3, stream_url: 'http://localhost:8000/stream/cam6' },
-  'CAM_07': { id: 'CAM_07', label: 'Waiting Area', status: 'online', last_frame_ts: Date.now(), person_count: 67, stream_url: 'http://localhost:8000/stream/cam7' },
-  'CAM_08': { id: 'CAM_08', label: 'Ticket Counter', status: 'online', last_frame_ts: Date.now(), person_count: 28, stream_url: 'http://localhost:8000/stream/cam8' },
-  'CAM_09': { id: 'CAM_09', label: 'Entrance Hall', status: 'online', last_frame_ts: Date.now(), person_count: 34, stream_url: 'http://localhost:8000/stream/cam9' },
-  'CAM_10': { id: 'CAM_10', label: 'Platform 3 East', status: 'online', last_frame_ts: Date.now(), person_count: 19, stream_url: 'http://localhost:8000/stream/cam10' },
-  'CAM_11': { id: 'CAM_11', label: 'Platform 3 West', status: 'online', last_frame_ts: Date.now(), person_count: 22, stream_url: 'http://localhost:8000/stream/cam11' },
-  'CAM_12': { id: 'CAM_12', label: 'Track Section B', status: 'online', last_frame_ts: Date.now(), person_count: 1, stream_url: 'http://localhost:8000/stream/cam12' },
+  'CAM_01': { id: 'CAM_01', label: 'Platform 1 South', status: 'online', last_frame_ts: Date.now(), person_count: 42, stream_url: 'http://127.0.0.1:8001/stream/cam1' },
+  'CAM_02': { id: 'CAM_02', label: 'Platform 1 North', status: 'online', last_frame_ts: Date.now(), person_count: 38, stream_url: 'http://127.0.0.1:8001/stream/cam2' },
+  'CAM_03': { id: 'CAM_03', label: 'Platform 2 Central', status: 'online', last_frame_ts: Date.now(), person_count: 55, stream_url: 'http://127.0.0.1:8001/stream/cam3' },
+  'CAM_04': { id: 'CAM_04', label: 'Entry Gate A', status: 'online', last_frame_ts: Date.now(), person_count: 21, stream_url: 'http://127.0.0.1:8001/stream/cam4' },
+  'CAM_05': { id: 'CAM_05', label: 'Footbridge', status: 'online', last_frame_ts: Date.now(), person_count: 15, stream_url: 'http://127.0.0.1:8001/stream/cam5' },
+  'CAM_06': { id: 'CAM_06', label: 'Track Section A', status: 'online', last_frame_ts: Date.now(), person_count: 3, stream_url: 'http://127.0.0.1:8001/stream/cam6' },
+  'CAM_07': { id: 'CAM_07', label: 'Waiting Area', status: 'online', last_frame_ts: Date.now(), person_count: 67, stream_url: 'http://127.0.0.1:8001/stream/cam7' },
+  'CAM_08': { id: 'CAM_08', label: 'Ticket Counter', status: 'online', last_frame_ts: Date.now(), person_count: 28, stream_url: 'http://127.0.0.1:8001/stream/cam8' },
+  'CAM_09': { id: 'CAM_09', label: 'Entrance Hall', status: 'online', last_frame_ts: Date.now(), person_count: 34, stream_url: 'http://127.0.0.1:8001/stream/cam9' },
+  'CAM_10': { id: 'CAM_10', label: 'Platform 3 East', status: 'online', last_frame_ts: Date.now(), person_count: 19, stream_url: 'http://127.0.0.1:8001/stream/cam10' },
+  'CAM_11': { id: 'CAM_11', label: 'Platform 3 West', status: 'online', last_frame_ts: Date.now(), person_count: 22, stream_url: 'http://127.0.0.1:8001/stream/cam11' },
+  'CAM_12': { id: 'CAM_12', label: 'Track Section B', status: 'online', last_frame_ts: Date.now(), person_count: 1, stream_url: 'http://127.0.0.1:8001/stream/cam12' },
   'CAM_13': { id: 'CAM_13', label: 'Parking Area', status: 'offline', last_frame_ts: Date.now() - 600000, person_count: 0, stream_url: '' },
-  'CAM_14': { id: 'CAM_14', label: 'VIP Lounge', status: 'online', last_frame_ts: Date.now(), person_count: 5, stream_url: 'http://localhost:8000/stream/cam14' },
+  'CAM_14': { id: 'CAM_14', label: 'VIP Lounge', status: 'online', last_frame_ts: Date.now(), person_count: 5, stream_url: 'http://127.0.0.1:8001/stream/cam14' },
 };
 
 const defaultEdgeNodes: EdgeNodeHealth[] = [
@@ -158,7 +158,7 @@ const useSystemStore = create<SystemState>((set, get) => ({
       const formData = new URLSearchParams();
       formData.append('username', 'admin');
       formData.append('password', 'railguard');
-      const res = await fetch('http://localhost:8001/api/auth/token', {
+      const res = await fetch('http://127.0.0.1:8001/api/auth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
@@ -186,7 +186,7 @@ const useSystemStore = create<SystemState>((set, get) => ({
       token = get().jwtToken;
     }
 
-    const wsBase = 'ws://localhost:8001';
+    const wsBase = 'ws://127.0.0.1:8001';
     const ws = new WebSocket(`${wsBase}/ws/alerts?token=${token}`);
 
     ws.onopen = () => {

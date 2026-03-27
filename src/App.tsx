@@ -23,6 +23,11 @@ function App() {
 
   // Start live simulations on mount
   useEffect(() => {
+    // Connect to real-time backend
+    import('./store/useSystemStore').then(mod => {
+      mod.default.getState().connectWebSocket();
+    });
+
     const metricsInterval = startMetricsSimulation();
     const alertInterval = useAlertStore.getState().startSimulation();
     return () => {
