@@ -19,18 +19,18 @@ IMAGES_DIR = BASE_DIR / "datasets" / "auto_labeled" / "images"
 
 # YOLO-World class mapping from RailFOD target classes
 THREAT_CLASSES = [
-    "person on track",       # 0
-    "foreign object",        # 1
-    "fire",                  # 2
-    "smoke",                 # 3
-    "abandoned baggage",     # 4
-    "crowd",                 # 5
-    "track obstruction",     # 6
-    "animal",                # 7
+    "person walking on or near railway track",  # 0
+    "large stone or object on track",           # 1
+    "active fire on railway track",             # 2
+    "thick smoke or fire plume",                # 3
+    "abandoned luggage or black bag",           # 4
+    "large crowd of people at platform",        # 5
+    "fallen tree or obstacle on track",         # 6
+    "cow or dog or animal on railway track",    # 7
 ]
 
 # Confidence threshold — only keep high-confidence auto-labels
-CONF_THRESHOLD = 0.30
+CONF_THRESHOLD = 0.15
 
 # Max images to auto-label (to keep training time reasonable on CPU)
 MAX_IMAGES = 3000
@@ -54,8 +54,10 @@ def label_frames():
     LABELS_DIR.mkdir(parents=True, exist_ok=True)
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-    image_files = sorted(list(FRAMES_DIR.rglob("*.jpg")))[:MAX_IMAGES]
-    print(f"[AUTO-LABEL] Labeling {len(image_files)} frames...")
+    # Prioritize youtube_targeted and then other frames
+    all_frames = sorted(list(FRAMES_DIR.rglob("*.jpg")), key=lambda p: ("youtube_targeted" not in str(p), p))
+    image_files = all_frames[:MAX_IMAGES]
+    print(f"[AUTO-LABEL] Labeling {len(image_files)} frames (prioritizing targeted datasets)...")
 
     labeled = 0
     skipped = 0  # No detections above threshold
@@ -98,8 +100,8 @@ def label_frames():
             else:
                 skipped += 1
 
-            if (i + 1) % 100 == 0:
-                print(f"  Progress: {i+1}/{len(image_files)} | Labeled: {labeled} | Empty: {skipped}")
+            if (i + 1) % 10 == 0:
+                print(f"  Progress: {i+1}/{len(image_files)} | Labeled: {labeled} | Empty: {skipped} | Last: {unique_name}")
 
         except Exception as e:
             print(f"  [WARN] {img_path.name}: {e}")

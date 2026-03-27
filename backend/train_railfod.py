@@ -59,10 +59,10 @@ def train_model():
     # YOLOv8s — much better than nano for production
     model = YOLO("yolov8s.pt")
 
-    print(f"[RailFOD] Starting training (epochs=2, imgsz=160, YOLOv8s)...")
+    print(f"[RailFOD] Starting training (epochs=5, imgsz=160, YOLOv8s)...")
     results = model.train(
         data=data_yaml,
-        epochs=2,
+        epochs=5,
         imgsz=160,
         batch=4, # Smaller batch for CPU
         device="cpu",

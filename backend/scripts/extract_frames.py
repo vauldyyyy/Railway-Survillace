@@ -49,8 +49,8 @@ def scan_and_extract():
     total_frames  = 0
     category_stats = {}
 
-    # Scan all subdirectories under datasets/youtube and datasets/pexels
-    for search_root in [DATASETS_DIR / "youtube", DATASETS_DIR / "pexels"]:
+    # Scan all subdirectories under datasets/youtube, datasets/youtube_targeted and datasets/pexels
+    for search_root in [DATASETS_DIR / "youtube", DATASETS_DIR / "youtube_targeted", DATASETS_DIR / "pexels"]:
         if not search_root.exists():
             continue
         for video_path in sorted(search_root.rglob("*")):
@@ -69,7 +69,7 @@ def scan_and_extract():
             total_frames += n
             category_stats[category] = category_stats.get(category, 0) + n
 
-            print(f"  [{total_videos}] {video_path.name[:50]:<50} → {n:3d} frames  ({dt:.1f}s)")
+            print(f"  [{total_videos}] {video_path.name[:50]:<50} -> {n:3d} frames  ({dt:.1f}s)")
 
     return total_videos, total_frames, category_stats
 
