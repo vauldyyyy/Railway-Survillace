@@ -1,0 +1,11 @@
+numpy
+scikit-image
+opencv-python
+fastapi
+uvicorn
+sqlalchemy
+python-socketio
+pydantic
+streamlit
+websocket-client
+requests
