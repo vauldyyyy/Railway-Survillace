@@ -2,7 +2,10 @@ import time
 import uuid
 import torch
 import numpy as np
-import torchreid
+try:
+    import torchreid
+except ImportError:
+    torchreid = None
 from collections import defaultdict
 import datetime
 
@@ -14,16 +17,19 @@ class ReIDTracker:
         
         # Load OSNet Model
         print(f"[OSNet] Initializing Cross-Camera Re-Identification Engine...")
-        try:
-            self.extractor = torchreid.utils.FeatureExtractor(
-                model_name='osnet_x1_0',
-                model_path='', # Automatically pulls pretrained weights
-                device='cpu'   # Conforming to Hackathon CPU constraint 
-            )
-            print("[OSNet] Loaded osnet_x1_0 successfully.")
-        except Exception as e:
-            print(f"[OSNet-Error] Failed to load torchreid model: {e}")
-            self.extractor = None
+        self.extractor = None
+        if torchreid:
+            try:
+                self.extractor = torchreid.utils.FeatureExtractor(
+                    model_name='osnet_x1_0',
+                    model_path='', # Automatically pulls pretrained weights
+                    device='cpu'   # Conforming to Hackathon CPU constraint 
+                )
+                print("[OSNet] Loaded osnet_x1_0 successfully.")
+            except Exception as e:
+                print(f"[OSNet-WARN] Neural ReID failed, using spatial fallback: {e}")
+        else:
+            print("[OSNet-WARN] torchreid not installed, using spatial fallback.")
 
         # Gallery mapping: UUID -> {"embedding": np.array, "path": [records]}
         self.gallery = {}
@@ -87,18 +93,31 @@ class ReIDTracker:
         now_str = datetime.datetime.now().strftime("%H:%M:%S")
         path_record = {"camera": camera_id, "time": now_str, "center": (cx, cy)}
         
-        # 5. Iterative Gallery Matching (Cosine Probe)
+        # 5. Fallback or Neural Matching
         best_match_uuid = None
         best_score = -1.0
         
-        for p_uuid, data in self.gallery.items():
-            score = self._cosine_similarity(secure_emb, data["embedding"])
-            if score > best_score:
-                best_score = score
-                best_match_uuid = p_uuid
-                
+        if self.extractor:
+            # Neural Cosine Probe
+            for p_uuid, data in self.gallery.items():
+                if "embedding" in data:
+                    score = self._cosine_similarity(secure_emb, data["embedding"])
+                    if score > best_score:
+                        best_score = score
+                        best_match_uuid = p_uuid
+        else:
+            # Spatial Fallback (Centroid Proximity)
+            for p_uuid, data in self.gallery.items():
+                if data["path"]:
+                    last_pos = data["path"][-1]["center"]
+                    dist = np.linalg.norm(np.array(last_pos) - np.array((cx, cy)))
+                    # If within 100 pixels, assume same person for demo stability
+                    if dist < 100:
+                        best_match_uuid = p_uuid
+                        best_score = 1.0 # Forced match
+                        
         # 6. Resolving Trajectory Permanence
-        if best_match_uuid is not None and best_score >= self.threshold:
+        if best_match_uuid is not None and (best_score >= self.threshold or not self.extractor):
             # Trajectory extension detected across cameras
             self.gallery[best_match_uuid]["path"].append(path_record)
             
