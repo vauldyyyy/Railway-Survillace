@@ -59,38 +59,16 @@ def train_model():
     # YOLOv8s — much better than nano for production
     model = YOLO("yolov8s.pt")
 
-    print(f"[RailFOD] Starting training (epochs=50, imgsz=640, YOLOv8s)...")
+    print(f"[RailFOD] Starting training (epochs=2, imgsz=160, YOLOv8s)...")
     results = model.train(
         data=data_yaml,
-        epochs=50,
-        imgsz=640,
-        batch=8,
+        epochs=2,
+        imgsz=160,
+        batch=4, # Smaller batch for CPU
         device="cpu",
-        workers=2,
         name=model_name,
-        patience=15,
-        # Max augmentation for railway robustness
-        hsv_h=0.015,
-        hsv_s=0.7,
-        hsv_v=0.4,
-        degrees=10.0,
-        translate=0.1,
-        scale=0.5,
-        shear=2.0,
-        perspective=0.0005,
-        flipud=0.1,
-        fliplr=0.5,
-        mosaic=1.0,
-        mixup=0.15,
-        blur=0.1,
-        erasing=0.2,
-        lr0=0.01,
-        lrf=0.01,
-        momentum=0.937,
-        weight_decay=0.0005,
-        warmup_epochs=3.0,
+        patience=5,
         save=True,
-        save_period=10,
         verbose=True,
         plots=True,
     )

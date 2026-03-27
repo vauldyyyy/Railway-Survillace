@@ -54,7 +54,7 @@ def label_frames():
     LABELS_DIR.mkdir(parents=True, exist_ok=True)
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-    image_files = sorted(FRAMES_DIR.rglob("*.jpg"))[:MAX_IMAGES]
+    image_files = sorted(list(FRAMES_DIR.rglob("*.jpg")))[:MAX_IMAGES]
     print(f"[AUTO-LABEL] Labeling {len(image_files)} frames...")
 
     labeled = 0
@@ -62,6 +62,14 @@ def label_frames():
 
     for i, img_path in enumerate(image_files):
         try:
+            # Use unique name: folder_name__filename.txt
+            unique_name = f"{img_path.parent.name}__{img_path.stem}"
+            label_file = LABELS_DIR / f"{unique_name}.txt"
+            
+            if label_file.exists():
+                labeled += 1
+                continue 
+
             results = model(str(img_path), verbose=False, conf=CONF_THRESHOLD)[0]
             
             # Build YOLO label string
@@ -78,12 +86,11 @@ def label_frames():
             
             if lines:
                 # Save label
-                label_file = LABELS_DIR / f"{img_path.stem}.txt"
                 label_file.write_text("\n".join(lines))
                 
                 # Copy/symlink image to auto_labeled/images
                 import shutil
-                dst = IMAGES_DIR / img_path.name
+                dst = IMAGES_DIR / f"{unique_name}{img_path.suffix}"
                 if not dst.exists():
                     shutil.copy2(str(img_path), str(dst))
                 
