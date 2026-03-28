@@ -65,6 +65,14 @@ interface SystemState {
   jwtToken: string | null;
   globalConfidence: number;
 
+  // GPU Bridge
+  gpuBridge: {
+    mode: 'local' | 'remote';
+    connected: boolean;
+    latency_ms: number;
+    inference_source: 'local' | 'remote';
+  };
+
   // Actions
   updateThreatScore: (score: number) => void;
   updateGlobalConfidence: (conf: number) => void;
@@ -72,6 +80,7 @@ interface SystemState {
   updateCamera: (id: string, update: Partial<CameraState>) => void;
   setEdgeNodes: (nodes: EdgeNodeHealth[]) => void;
   setWsConnected: (connected: boolean) => void;
+  updateBridgeStatus: (status: { mode: string; connected: boolean; latency_ms: number; inference_source: string }) => void;
   login: () => Promise<boolean>;
   connectWebSocket: () => void;
 }
@@ -130,6 +139,12 @@ const useSystemStore = create<SystemState>((set, get) => ({
   wsConnected: false,
   jwtToken: null,
   globalConfidence: 94.2,
+  gpuBridge: {
+    mode: 'local',
+    connected: false,
+    latency_ms: 0,
+    inference_source: 'local',
+  },
 
   updateThreatScore: (score) => {
     let level: ThreatLevel = 'LOW';
@@ -159,6 +174,14 @@ const useSystemStore = create<SystemState>((set, get) => ({
 
   setEdgeNodes: (nodes) => set({ edgeNodes: nodes }),
   setWsConnected: (connected) => set({ wsConnected: connected }),
+  updateBridgeStatus: (status) => set({
+    gpuBridge: {
+      mode: (status.mode as 'local' | 'remote') || 'local',
+      connected: status.connected ?? false,
+      latency_ms: status.latency_ms ?? 0,
+      inference_source: (status.inference_source as 'local' | 'remote') || 'local',
+    },
+  }),
 
   login: async () => {
     try {
@@ -296,6 +319,27 @@ export function startMetricsSimulation() {
        console.log("Stats sync error, backend may be offline.");
     }
   }, 2000);
+}
+
+// ── GPU Bridge status polling ──
+export function startBridgePoller() {
+  return setInterval(async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/bridge-status');
+      if (res.ok) {
+        const data = await res.json();
+        useSystemStore.getState().updateBridgeStatus(data);
+      }
+    } catch {
+      // Backend offline — keep bridge disconnected
+      useSystemStore.getState().updateBridgeStatus({
+        mode: 'local',
+        connected: false,
+        latency_ms: 0,
+        inference_source: 'local',
+      });
+    }
+  }, 5000);
 }
 
 export default useSystemStore;

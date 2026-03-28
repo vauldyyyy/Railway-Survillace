@@ -15,6 +15,13 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
+# Load .env config
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect, UploadFile, File, Depends
@@ -27,6 +34,21 @@ from pydantic import BaseModel
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from security.auth import create_access_token, verify_token, verify_ws_token
+
+# Encrypted Database
+try:
+    from app.core.database import init_db, log_incident, log_model_metric
+    _DB_AVAILABLE = True
+except Exception as e:
+    print(f"[DB] Warning: encrypted DB not available: {e}")
+    _DB_AVAILABLE = False
+
+# Remote GPU Bridge Client
+try:
+    from core.remote_client import remote_client
+    _REMOTE_CLIENT = remote_client
+except ImportError:
+    _REMOTE_CLIENT = None
 
 # Lazy import pipeline (heavy model loading)
 _pipeline = None
@@ -151,6 +173,32 @@ class SharedStreamManager:
 
                 for alert in alerts:
                     add_alert(alert)
+                    # Persist confirmed threats to encrypted DB
+                    if _DB_AVAILABLE and alert.get("alert"):
+                        try:
+                            log_incident(
+                                uuid=str(alert.get("uuid", f"auto_{time.time()}")),
+                                cam_id=str(alert.get("camera", "cam1")),
+                                incident_type=str(alert.get("type", "UNKNOWN")),
+                                severity=str(alert.get("severity", "medium")).upper(),
+                                confidence=float(alert.get("confidence", 0.0)),
+                                description=f"Detected at {time.strftime('%H:%M:%S')}",
+                            )
+                        except Exception as db_err:
+                            print(f"[DB] log_incident error: {db_err}")
+
+                # Log model metrics every ~50 frames via confidence rolling avg
+                if _DB_AVAILABLE and pipeline.current_fps > 0:
+                    try:
+                        log_model_metric(
+                            model_name="YOLO-World-RailGuard",
+                            confidence=float(pipeline.rolling_confidence),
+                            fps=float(pipeline.current_fps),
+                            latency_ms=float(1000.0 / (pipeline.current_fps + 0.001)),
+                            camera_id="cam1",
+                        )
+                    except Exception as db_err:
+                        print(f"[DB] log_metric error: {db_err}")
 
             except Exception as e:
                 print(f"[Critical Manager Error] {e}")
@@ -176,6 +224,11 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     app.loop = asyncio.get_running_loop()
+    if _DB_AVAILABLE:
+        try:
+            init_db()
+        except Exception as e:
+            print(f"[DB] Init error: {e}")
     stream_manager.start()
 
 @app.on_event("shutdown")
@@ -217,6 +270,51 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         return {"access_token": token, "token_type": "bearer"}
     return JSONResponse(status_code=401, content={"detail": "Incorrect credentials"})
 
+@app.get("/video/{camera_id}")
+async def video_feed_alias(camera_id: str):
+    return await video_feed(camera_id)
+
+@app.get("/api/alerts")
+def get_recent_alerts():
+    return JSONResponse(content=list(reversed(ALERTS))[:20])
+
+@app.get("/api/stats")
+def get_system_stats():
+    pipeline = get_pipeline()
+    tracked = len(pipeline.reid.gallery) if hasattr(pipeline, "reid") else 0
+    conf = pipeline.rolling_confidence if hasattr(pipeline, "rolling_confidence") else 0.942
+    return {"total_tracked": tracked, "flagged": 0, "cameras_active": 6, "recent_alerts": len(ALERTS), "avg_confidence": round(conf * 100, 1)}
+
+@app.get("/api/heatmap")
+def get_heatmap():
+    pipeline = get_pipeline()
+    grid = pipeline.heatmap_grid if hasattr(pipeline, "heatmap_grid") else [[0.0]*20 for _ in range(20)]
+    return JSONResponse(content={"grid": grid})
+
+@app.get("/api/tracklets")
+def get_system_tracklets():
+    return JSONResponse(content=[])
+
+@app.get("/api/bridge-status")
+def get_bridge_status():
+    """GPU Bridge status endpoint for the frontend sidebar indicator."""
+    if _REMOTE_CLIENT:
+        status = _REMOTE_CLIENT.get_status()
+        # Also include inference source from pipeline
+        try:
+            pipeline = get_pipeline()
+            status["inference_source"] = getattr(pipeline, "inference_source", "local")
+        except Exception:
+            status["inference_source"] = "local"
+        return JSONResponse(content=status)
+    return JSONResponse(content={
+        "mode": "local",
+        "connected": False,
+        "latency_ms": 0,
+        "remote_url": None,
+        "inference_source": "local",
+    })
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8001, reload=False)
+    uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)

@@ -6,7 +6,7 @@ from pathlib import Path
 
 def download_file(url, dest_path):
     """
-    Downloads a file from a URL to a destination path, handling Google Drive links.
+    Downloads a file from a URL to a destination path, handling Google Drive's "Virus Scan" redirects.
     """
     print(f"🚀 Initializing sync for: {dest_path.name}")
     
@@ -23,16 +23,27 @@ def download_file(url, dest_path):
         print(f"🔗 Detected Google Drive link. Converting to direct download: {file_id}")
 
     try:
-        response = requests.get(url, stream=True)
+        session = requests.Session()
+        # First request to get cookies and potential confirmation token
+        response = session.get(url, stream=True)
+        
+        # Check for Google's "Virus Scan" / "Confirmation" page
+        confirm_token = None
+        for key, value in response.cookies.items():
+            if key.startswith('download_warning'):
+                confirm_token = value
+                break
+        
+        if confirm_token:
+            params = {'id': file_id, 'confirm': confirm_token}
+            response = session.get('https://drive.google.com/uc?export=download', params=params, stream=True)
+            print("⚠️ Large file detected. Bypass token applied.")
+
         response.raise_for_status()
         
-        # Handle the case where Google Drive prompts for large file scan
-        if 'confirm=' in response.url:
-            print("⚠️ Large file detected. Following confirmation redirect...")
-            response = requests.get(response.url, stream=True)
-
         total_size = int(response.headers.get('content-length', 0))
-        block_size = 1024 * 1024 # 1MB
+        block_size = 10 \
+            * 1024 * 1024 # 10MB
         
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         

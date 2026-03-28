@@ -39,6 +39,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const globalConfidence = useSystemStore(state => state.globalConfidence);
   const wsConnected = useSystemStore(state => state.wsConnected);
+  const gpuBridge = useSystemStore(state => state.gpuBridge);
   const [clock, setClock] = useState('');
   const [uptime, setUptime] = useState(0);
 
@@ -111,6 +112,46 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           </>
         )}
       </div>
+
+      {/* GPU Bridge Status */}
+      {!collapsed && (
+        <div className="px-4 py-2 border-b border-slate-800/50">
+          <div className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-[10px] font-mono ${
+            gpuBridge.connected
+              ? 'bg-emerald-500/10 border border-emerald-500/30'
+              : gpuBridge.mode === 'remote'
+                ? 'bg-amber-500/10 border border-amber-500/30'
+                : 'bg-slate-800/60 border border-slate-700/50'
+          }`}>
+            <div className="flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                gpuBridge.connected
+                  ? 'bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.7)]'
+                  : gpuBridge.mode === 'remote'
+                    ? 'bg-amber-400 animate-pulse'
+                    : 'bg-slate-500'
+              }`} />
+              <span className={`uppercase tracking-wider font-bold ${
+                gpuBridge.connected ? 'text-emerald-400' : gpuBridge.mode === 'remote' ? 'text-amber-400' : 'text-slate-500'
+              }`}>
+                {gpuBridge.connected ? 'GPU BRIDGE' : gpuBridge.mode === 'remote' ? 'RECONNECTING' : 'LOCAL CPU'}
+              </span>
+            </div>
+            {gpuBridge.connected && (
+              <span className="text-emerald-300/80">{gpuBridge.latency_ms}ms</span>
+            )}
+          </div>
+        </div>
+      )}
+      {collapsed && (
+        <div className="flex justify-center py-2 border-b border-slate-800/50" title={gpuBridge.connected ? `GPU Bridge: ${gpuBridge.latency_ms}ms` : 'Local CPU'}>
+          <span className={`w-2 h-2 rounded-full ${
+            gpuBridge.connected
+              ? 'bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.7)]'
+              : 'bg-slate-500'
+          }`} />
+        </div>
+      )}
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 overflow-x-hidden">

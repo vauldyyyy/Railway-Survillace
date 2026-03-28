@@ -2,6 +2,7 @@
 Unified Next-Gen Surveillance Pipeline
 Integrates YOLO-World Foundation Vision via Zero-Shot text prompting
 with OSNet cross-camera Re-Identification (ReID) and Differential Privacy.
+Supports Hybrid Inference: Remote GPU Bridge (Colab) + Local Fallback.
 """
 import time
 import cv2
@@ -11,15 +12,23 @@ from detection.reid import ReIDTracker
 from detection.temporal_filter import TemporalFilter
 from detection.preprocessor import preprocessor
 
+try:
+    from core.remote_client import remote_client
+    _REMOTE_AVAILABLE = True
+except ImportError:
+    _REMOTE_AVAILABLE = False
+    remote_client = None
+
 class SurveillancePipeline:
     def __init__(self):
         print("\n=======================================================")
-        print("🚀 INITIALIZING MASTER INTELLIGENCE PIPELINE (V2) ")
+        print("  INITIALIZING MASTER INTELLIGENCE PIPELINE (V2)")
         print("=======================================================")
         self.yolo = ZeroShotDetector()
         self.reid = ReIDTracker(threshold=0.72, epsilon=0.1)
         self.zone_detector = ZoneIntrusionDetector()
         self.temp_filter = TemporalFilter(min_hits=5, max_age=15)
+        self.remote_client = remote_client if _REMOTE_AVAILABLE else None
         
         self._fps_buffer = []
         self.current_fps = 0
@@ -27,8 +36,13 @@ class SurveillancePipeline:
         
         self.rolling_confidence = 0.942
         self.heatmap_grid = [[0.0]*20 for _ in range(20)]
-        print("✅ Pipeline Core Loaded Successfully.")
-        print("[Pipeline] ✓ AdverseConditionPreprocessor Initialized\n")
+        self.inference_source = "local"  # "local" or "remote"
+        print("[OK] Pipeline Core Loaded Successfully.")
+        print("[Pipeline] AdverseConditionPreprocessor Initialized")
+        if self.remote_client and self.remote_client.mode == "remote":
+            print("[Pipeline] Hybrid Inference ENABLED (Remote GPU Bridge)\n")
+        else:
+            print("[Pipeline] Local Inference Mode\n")
 
     def run(self, frame, camera_id="default"):
         """
@@ -49,8 +63,17 @@ class SurveillancePipeline:
         if condition != "normal":
             print(f"[Pipeline] Adverse Condition Detected: {condition.upper()}")
         
-        # 1. Zero-Shot Vision Inference (Using enhanced frame + dynamic thresholds)
-        detections = self.yolo.detect(frame_enhanced, condition=condition)
+        # 1. Hybrid Inference: Try Remote GPU first, fall back to local
+        detections = None
+        if self.remote_client and self.remote_client.is_connected:
+            detections = self.remote_client.detect_remote(frame_enhanced, condition=condition)
+            if detections is not None:
+                self.inference_source = "remote"
+        
+        if detections is None:
+            # Local YOLO-World fallback
+            detections = self.yolo.detect(frame_enhanced, condition=condition)
+            self.inference_source = "local"
         
         if detections:
             avg_conf = sum(d["confidence"] for d in detections) / len(detections)
@@ -148,7 +171,8 @@ class SurveillancePipeline:
         self._fps_buffer = [t for t in self._fps_buffer if now - t < 2.0]  # 2s window
         self.current_fps = len(self._fps_buffer) // 2  # Average over 2s
         
-        cv2.putText(annotated_frame, f"SYS V2 FPS: {self.current_fps}", (10, 30), 
+        src_tag = "GPU" if self.inference_source == "remote" else "CPU"
+        cv2.putText(annotated_frame, f"SYS V2 FPS: {self.current_fps} [{src_tag}]", (10, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
         # Retrieve global cross-camera paths mapping
