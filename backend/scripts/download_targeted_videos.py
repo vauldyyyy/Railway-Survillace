@@ -1,52 +1,37 @@
-"""
-download_targeted_videos.py
-Downloads specific "hard-case" YouTube videos for railway robustness (night, fog, weather).
-Uses yt-dlp to download and organizes into backend/datasets/youtube_targeted.
-"""
-
 import os
 import subprocess
 from pathlib import Path
 
+# Targeted Video Collection for Audit Closure
+VIDEO_TARGETS = [
+    {"url": "https://www.youtube.com/watch?v=06OLEi9v_Gw", "category": "night_fog", "desc": "High quality night/fog"},
+    {"url": "https://www.youtube.com/watch?v=L2G57361_G4", "category": "drone_uav", "desc": "Railway Drone Overhead 4K"},
+    {"url": "https://www.youtube.com/watch?v=4pG_v2jS6f4", "category": "indian_fog", "desc": "Dense Fog Indian Railway Action"},
+]
+
 BASE_DIR = Path(__file__).resolve().parent.parent
-OUT_DIR  = BASE_DIR / "datasets" / "youtube_targeted"
+OUT_DIR = BASE_DIR / "datasets" / "youtube_targeted"
 
-# Targeted URLs from user recommendation
-VIDEOS = {
-    "night_fog_high_robustness": "https://www.youtube.com/watch?v=Qewujk80HKg",
-    "foggy_trains_india": "https://www.youtube.com/watch?v=jL_2f58zw70",
-    "winter_fog_railway": "https://www.youtube.com/watch?v=lL7Mn3VBbjA",
-    "perfect_crossing_4k": "https://www.youtube.com/watch?v=fWZ2wFIYRzE",
-}
-
-def download_video(url, name):
+def download_videos():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_DIR / f"{name}.mp4"
+    print(f"--- Starting Targeted Data Acquisition (Task 2) ---")
     
-    print(f"\n[TARGETED] Downloading: {name} ({url})")
-    cmd = [
-        "yt-dlp",
-        "-f", "best[height<=720][ext=mp4]/best[height<=720]/best",
-        url,
-        "-o", str(out_path),
-        "--no-playlist",
-        "--restrict-filenames",
-    ]
-    try:
-        subprocess.run(cmd, check=True)
-        print(f"   [OK] Downloaded to {out_path}")
-        return out_path
-    except subprocess.CalledProcessError as e:
-        print(f"   [ERROR] Failed to download {name}: {e}")
-        return None
-
-def main():
-    print("[START] Starting Targeted Video Acquisition...")
-    for name, url in VIDEOS.items():
-        download_video(url, name)
-    print("\n[OK] Targeted downloads complete.")
-    print(f"Output directory: {OUT_DIR}")
-    print("👉 Next step: Run frame extraction on these videos.")
+    for i, target in enumerate(VIDEO_TARGETS):
+        url = target["url"]
+        cat = target["category"]
+        print(f"[Downloading {i+1}/3] {cat}: {url}")
+        
+        output_tmpl = str(OUT_DIR / f"{cat}_%(id)s.%(ext)s")
+        
+        try:
+            # Use -f "best[height<=720]" to keep it fast but good quality
+            subprocess.run([
+                "yt-dlp", "-f", "best[height<=720][ext=mp4]", 
+                "-o", output_tmpl, url
+            ], check=True)
+            print(f"  OK: {cat} downloaded.")
+        except Exception as e:
+            print(f"  FAIL: {cat} failed: {e}")
 
 if __name__ == "__main__":
-    main()
+    download_videos()

@@ -1,0 +1,19 @@
+# RailGuard AI — Master Augmented Dataset (Local & Colab)
+# This YAML is designed for Stage 2 Fine-Tuning on Adverse Conditions.
+
+# For Colab: Update these to your Drive paths
+# Example: /content/drive/MyDrive/railguard/augmented/
+train: datasets/auto_labeled/images
+val: datasets/roboflow/merged/roboflow_val/images
+
+# Number of Classes
+nc: 5
+
+# Class Names (Aligned with RailFOD23 + YOLO-World Mapping)
+names: [
+  'person',              # 0: person walking on or near track
+  'obstruction',         # 1: stone or obstacle on track
+  'fire_smoke',          # 2/3: fire or smoke plume
+  'abandoned_baggage',   # 4: unattended luggage
+  'crowd'                # 5: large crowd at platform
+]

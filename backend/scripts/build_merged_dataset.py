@@ -11,6 +11,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATASETS_DIR = BASE_DIR / "datasets"
+ROOT_DATASETS_DIR = BASE_DIR.parent / "datasets"  # Search root for project-level data
 
 MERGED_DIR = DATASETS_DIR / "merged"
 TRAIN_IMG  = MERGED_DIR / "images" / "train"
@@ -37,6 +38,11 @@ SOURCES = [
     (DATASETS_DIR / "railfod23" / "images", DATASETS_DIR / "railfod23" / "labels", "railfod23"),
     (DATASETS_DIR / "auto_labeled" / "images", DATASETS_DIR / "auto_labeled" / "labels", "auto_labeled"),
     (DATASETS_DIR / "uav_rsod" / "images", DATASETS_DIR / "uav_rsod" / "labels", "uav_rsod"),
+    (DATASETS_DIR / "hard_negatives" / "images", DATASETS_DIR / "hard_negatives" / "labels", "hard_negatives"),
+    (DATASETS_DIR / "filtered_diverse" / "images", DATASETS_DIR / "filtered_diverse" / "labels", "filtered_diverse"),
+    # Root datasets (Fire/Smoke)
+    (ROOT_DATASETS_DIR / "roboflow" / "fire-smoke" / "train" / "images", ROOT_DATASETS_DIR / "roboflow" / "fire-smoke" / "train" / "labels", "fire-smoke-train"),
+    (ROOT_DATASETS_DIR / "roboflow" / "fire-smoke" / "valid" / "images", ROOT_DATASETS_DIR / "roboflow" / "fire-smoke" / "valid" / "labels", "fire-smoke-val"),
 ]
 
 # Roboflow merged dataset (built by download_roboflow_datasets.py)
