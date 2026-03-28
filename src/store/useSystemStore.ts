@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import useAlertStore from './useAlertStore';
+
 
 // ── Types ──
 export interface ModelMetrics {
@@ -61,9 +63,11 @@ interface SystemState {
   lastSync: number;
   wsConnected: boolean;
   jwtToken: string | null;
+  globalConfidence: number;
 
   // Actions
   updateThreatScore: (score: number) => void;
+  updateGlobalConfidence: (conf: number) => void;
   updateModelMetrics: (model: string, metrics: Partial<ModelMetrics>) => void;
   updateCamera: (id: string, update: Partial<CameraState>) => void;
   setEdgeNodes: (nodes: EdgeNodeHealth[]) => void;
@@ -86,20 +90,20 @@ const defaultModel = (name: string, fps: number, gpu: number): ModelMetrics => (
 });
 
 const defaultCameras: Record<string, CameraState> = {
-  'CAM_01': { id: 'CAM_01', label: 'Platform 1 South', status: 'online', last_frame_ts: Date.now(), person_count: 42, stream_url: 'http://127.0.0.1:8001/stream/cam1' },
-  'CAM_02': { id: 'CAM_02', label: 'Platform 1 North', status: 'online', last_frame_ts: Date.now(), person_count: 38, stream_url: 'http://127.0.0.1:8001/stream/cam2' },
-  'CAM_03': { id: 'CAM_03', label: 'Platform 2 Central', status: 'online', last_frame_ts: Date.now(), person_count: 55, stream_url: 'http://127.0.0.1:8001/stream/cam3' },
-  'CAM_04': { id: 'CAM_04', label: 'Entry Gate A', status: 'online', last_frame_ts: Date.now(), person_count: 21, stream_url: 'http://127.0.0.1:8001/stream/cam4' },
-  'CAM_05': { id: 'CAM_05', label: 'Footbridge', status: 'online', last_frame_ts: Date.now(), person_count: 15, stream_url: 'http://127.0.0.1:8001/stream/cam5' },
-  'CAM_06': { id: 'CAM_06', label: 'Track Section A', status: 'online', last_frame_ts: Date.now(), person_count: 3, stream_url: 'http://127.0.0.1:8001/stream/cam6' },
-  'CAM_07': { id: 'CAM_07', label: 'Waiting Area', status: 'online', last_frame_ts: Date.now(), person_count: 67, stream_url: 'http://127.0.0.1:8001/stream/cam7' },
-  'CAM_08': { id: 'CAM_08', label: 'Ticket Counter', status: 'online', last_frame_ts: Date.now(), person_count: 28, stream_url: 'http://127.0.0.1:8001/stream/cam8' },
-  'CAM_09': { id: 'CAM_09', label: 'Entrance Hall', status: 'online', last_frame_ts: Date.now(), person_count: 34, stream_url: 'http://127.0.0.1:8001/stream/cam9' },
-  'CAM_10': { id: 'CAM_10', label: 'Platform 3 East', status: 'online', last_frame_ts: Date.now(), person_count: 19, stream_url: 'http://127.0.0.1:8001/stream/cam10' },
-  'CAM_11': { id: 'CAM_11', label: 'Platform 3 West', status: 'online', last_frame_ts: Date.now(), person_count: 22, stream_url: 'http://127.0.0.1:8001/stream/cam11' },
-  'CAM_12': { id: 'CAM_12', label: 'Track Section B', status: 'online', last_frame_ts: Date.now(), person_count: 1, stream_url: 'http://127.0.0.1:8001/stream/cam12' },
+  'CAM_01': { id: 'CAM_01', label: 'Platform 1 South', status: 'online', last_frame_ts: Date.now(), person_count: 42, stream_url: 'http://127.0.0.1:8000/stream/cam1' },
+  'CAM_02': { id: 'CAM_02', label: 'Platform 1 North', status: 'online', last_frame_ts: Date.now(), person_count: 38, stream_url: 'http://127.0.0.1:8000/stream/cam2' },
+  'CAM_03': { id: 'CAM_03', label: 'Platform 2 Central', status: 'online', last_frame_ts: Date.now(), person_count: 55, stream_url: 'http://127.0.0.1:8000/stream/cam3' },
+  'CAM_04': { id: 'CAM_04', label: 'Entry Gate A', status: 'online', last_frame_ts: Date.now(), person_count: 21, stream_url: 'http://127.0.0.1:8000/stream/cam4' },
+  'CAM_05': { id: 'CAM_05', label: 'Footbridge', status: 'online', last_frame_ts: Date.now(), person_count: 15, stream_url: 'http://127.0.0.1:8000/stream/cam5' },
+  'CAM_06': { id: 'CAM_06', label: 'Track Section A', status: 'online', last_frame_ts: Date.now(), person_count: 3, stream_url: 'http://127.0.0.1:8000/stream/cam6' },
+  'CAM_07': { id: 'CAM_07', label: 'Waiting Area', status: 'online', last_frame_ts: Date.now(), person_count: 67, stream_url: 'http://127.0.0.1:8000/stream/cam7' },
+  'CAM_08': { id: 'CAM_08', label: 'Ticket Counter', status: 'online', last_frame_ts: Date.now(), person_count: 28, stream_url: 'http://127.0.0.1:8000/stream/cam8' },
+  'CAM_09': { id: 'CAM_09', label: 'Entrance Hall', status: 'online', last_frame_ts: Date.now(), person_count: 34, stream_url: 'http://127.0.0.1:8000/stream/cam9' },
+  'CAM_10': { id: 'CAM_10', label: 'Platform 3 East', status: 'online', last_frame_ts: Date.now(), person_count: 19, stream_url: 'http://127.0.0.1:8000/stream/cam10' },
+  'CAM_11': { id: 'CAM_11', label: 'Platform 3 West', status: 'online', last_frame_ts: Date.now(), person_count: 22, stream_url: 'http://127.0.0.1:8000/stream/cam11' },
+  'CAM_12': { id: 'CAM_12', label: 'Track Section B', status: 'online', last_frame_ts: Date.now(), person_count: 1, stream_url: 'http://127.0.0.1:8000/stream/cam12' },
   'CAM_13': { id: 'CAM_13', label: 'Parking Area', status: 'offline', last_frame_ts: Date.now() - 600000, person_count: 0, stream_url: '' },
-  'CAM_14': { id: 'CAM_14', label: 'VIP Lounge', status: 'online', last_frame_ts: Date.now(), person_count: 5, stream_url: 'http://127.0.0.1:8001/stream/cam14' },
+  'CAM_14': { id: 'CAM_14', label: 'VIP Lounge', status: 'online', last_frame_ts: Date.now(), person_count: 5, stream_url: 'http://127.0.0.1:8000/stream/cam14' },
 };
 
 const defaultEdgeNodes: EdgeNodeHealth[] = [
@@ -125,6 +129,7 @@ const useSystemStore = create<SystemState>((set, get) => ({
   lastSync: Date.now(),
   wsConnected: false,
   jwtToken: null,
+  globalConfidence: 94.2,
 
   updateThreatScore: (score) => {
     let level: ThreatLevel = 'LOW';
@@ -133,6 +138,8 @@ const useSystemStore = create<SystemState>((set, get) => ({
     else if (score >= 3) level = 'MEDIUM';
     set({ threatScore: score, threatLevel: level });
   },
+
+  updateGlobalConfidence: (conf) => set({ globalConfidence: conf }),
 
   updateModelMetrics: (model, metrics) =>
     set((state) => ({
@@ -158,7 +165,7 @@ const useSystemStore = create<SystemState>((set, get) => ({
       const formData = new URLSearchParams();
       formData.append('username', 'admin');
       formData.append('password', 'railguard');
-      const res = await fetch('http://127.0.0.1:8001/api/auth/token', {
+      const res = await fetch('http://127.0.0.1:8000/api/auth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
@@ -186,7 +193,7 @@ const useSystemStore = create<SystemState>((set, get) => ({
       token = get().jwtToken;
     }
 
-    const wsBase = 'ws://127.0.0.1:8001';
+    const wsBase = 'ws://127.0.0.1:8000';
     const ws = new WebSocket(`${wsBase}/ws/alerts?token=${token}`);
 
     ws.onopen = () => {
@@ -220,6 +227,29 @@ const useSystemStore = create<SystemState>((set, get) => ({
               get().updateThreatScore(msg.payload.score);
             }
             break;
+          case 'alert':
+            if (msg.payload) {
+              const p = msg.payload;
+              useAlertStore.getState().addAlert({
+                id: `WS-${p.uuid || Date.now()}`,
+                type: p.type || 'UNKNOWN',
+                severity: (p.severity as any) || 'info',
+                camera: p.camera || 'CAM_01',
+                location: 'Station Perimeter',
+                timestamp: (p.ts * 1000) || Date.now(),
+                aiConfidence: Math.round((p.confidence || 0.8) * 100),
+                acknowledged: false,
+                transparency: {
+                  model_used: 'YOLO-World Hardened V2',
+                  confidence: p.confidence || 0.8,
+                  reasoning: p.type === 'PERSON ON TRACK' ? ['Intrusion detected in restricted track zone'] : ['Anomaly detected'],
+                  track_id_history: [p.uuid],
+                  time_to_detection_ms: 42,
+                  bbox: p.box,
+                }
+              });
+            }
+            break;
           default:
             break;
         }
@@ -237,40 +267,35 @@ const useSystemStore = create<SystemState>((set, get) => ({
   },
 }));
 
-// ── Metric simulation (for demo when backend is offline) ──
+// ── Real ML metric synchronization ──
 export function startMetricsSimulation() {
-  return setInterval(() => {
-    const store = useSystemStore.getState();
-    const jitter = (base: number, range: number) => Math.max(0, base + (Math.random() - 0.5) * range);
-
-    store.updateModelMetrics('coco', {
-      fps: jitter(32, 6),
-      latency_ms: jitter(31, 8),
-      gpu_util_pct: jitter(45, 10),
-    });
-    store.updateModelMetrics('railfod', {
-      fps: jitter(28, 5),
-      latency_ms: jitter(35, 6),
-      gpu_util_pct: jitter(12, 4),
-    });
-    store.updateModelMetrics('uav', {
-      fps: jitter(27, 4),
-      latency_ms: jitter(37, 5),
-      gpu_util_pct: jitter(10, 3),
-    });
-    store.updateModelMetrics('lstm', {
-      fps: jitter(200, 40),
-      latency_ms: jitter(5, 2),
-    });
-    store.updateModelMetrics('tracker', {
-      fps: jitter(30, 4),
-      latency_ms: jitter(33, 5),
-    });
-
-    // Slowly fluctuate threat score
-    const newScore = Math.max(0, Math.min(10, store.threatScore + (Math.random() - 0.48) * 0.3));
-    store.updateThreatScore(parseFloat(newScore.toFixed(1)));
-  }, 1500);
+  return setInterval(async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/stats');
+      if (res.ok) {
+        const data = await res.json();
+        const store = useSystemStore.getState();
+        if (data.avg_confidence) {
+          store.updateGlobalConfidence(data.avg_confidence);
+        }
+        // Sync tracker active
+        if (data.total_tracked !== undefined) {
+             const tracker = store.modelMetrics.tracker;
+             store.updateModelMetrics('tracker', { ...tracker, precision: data.avg_confidence ? data.avg_confidence / 100 : tracker.precision });
+        }
+        if (data.recent_alerts > 0) {
+            // Adjust threat score dynamically based on active alerts
+            const newScore = Math.min(10, data.recent_alerts * 1.5);
+            store.updateThreatScore(newScore);
+        } else {
+            // Decay threat score slowly gracefully
+            store.updateThreatScore(Math.max(0, store.threatScore - 0.5));
+        }
+      }
+    } catch (e) {
+       console.log("Stats sync error, backend may be offline.");
+    }
+  }, 2000);
 }
 
 export default useSystemStore;

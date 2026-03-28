@@ -24,6 +24,9 @@ class SurveillancePipeline:
         self._fps_buffer = []
         self.current_fps = 0
         self.last_run_time = time.time()
+        
+        self.rolling_confidence = 0.942
+        self.heatmap_grid = [[0.0]*20 for _ in range(20)]
         print("✅ Pipeline Core Loaded Successfully.")
         print("[Pipeline] ✓ AdverseConditionPreprocessor Initialized\n")
 
@@ -49,6 +52,15 @@ class SurveillancePipeline:
         # 1. Zero-Shot Vision Inference (Using enhanced frame + dynamic thresholds)
         detections = self.yolo.detect(frame_enhanced, condition=condition)
         
+        if detections:
+            avg_conf = sum(d["confidence"] for d in detections) / len(detections)
+            self.rolling_confidence = (self.rolling_confidence * 0.95) + (avg_conf * 0.05)
+            
+        h, w = frame.shape[:2]
+        for i in range(20):
+            for j in range(20):
+                self.heatmap_grid[i][j] *= 0.98  # slower decay for stability
+        
         # 2. Resolve Detections & Cascade into Secondary Networks
         current_active_ids = []
         raw_alerts = []
@@ -59,6 +71,12 @@ class SurveillancePipeline:
             conf = det["confidence"]
             base_severity = det["severity"]
             x1, y1, x2, y2 = box
+            
+            if cls_name == "person":
+                cx, cy = (x1+x2)/2, (y1+y2)/2
+                grid_x = min(int((cx/w)*20), 19)
+                grid_y = min(int((cy/h)*20), 19)
+                self.heatmap_grid[grid_y][grid_x] = min(self.heatmap_grid[grid_y][grid_x] + 1.0, 10.0)
             
             # --- STAGE 2: OSNet Re-Identification (Persons Only) ---
             if cls_name == "person":

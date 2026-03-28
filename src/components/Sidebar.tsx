@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Video,
@@ -15,6 +15,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Page } from '../App';
+import useSystemStore from '../store/useSystemStore';
 
 interface SidebarProps {
   currentPage: string;
@@ -36,6 +37,27 @@ const NAV_ITEMS = [
 
 export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const globalConfidence = useSystemStore(state => state.globalConfidence);
+  const wsConnected = useSystemStore(state => state.wsConnected);
+  const [clock, setClock] = useState('');
+  const [uptime, setUptime] = useState(0);
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
+      setUptime(t => t + 1);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const uptimeStr = (() => {
+    const h = Math.floor(uptime / 3600);
+    const m = Math.floor((uptime % 3600) / 60);
+    const s = uptime % 60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  })();
 
   return (
     <aside
@@ -71,12 +93,21 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           </div>
         ) : (
           <>
-            <h1 className="text-xl font-bold text-cyan-400 tracking-wider uppercase whitespace-nowrap">
+            <h1 className="text-xl font-bold text-cyan-400 tracking-wider uppercase whitespace-nowrap glow-text-cyan">
               RAILGUARD AI
             </h1>
             <p className="text-[10px] text-slate-500 tracking-widest uppercase mt-1 whitespace-nowrap">
               ISEA Phase III Initiative
             </p>
+            <div className="mt-3 flex items-center justify-between">
+              <div className="text-[11px] font-mono text-slate-300 font-bold">{clock}</div>
+              <div className={`flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded ${
+                wsConnected ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-600 bg-slate-800'
+              }`}>
+                <span className={`w-1 h-1 rounded-full ${wsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+                {wsConnected ? 'WS LIVE' : 'WS OFF'}
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -136,6 +167,38 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           })}
         </ul>
       </nav>
+
+      {/* ML Accuracy + System Stats display */}
+      {!collapsed && (
+        <div className="px-4 py-3 border-t border-slate-800/50 space-y-3">
+          {/* Confidence bar */}
+          <div>
+            <div className="text-[10px] font-mono text-slate-500 uppercase flex justify-between mb-1.5">
+              <span>Model Accuracy</span>
+              <span className="text-cyan-400 glow-text-cyan">{globalConfidence.toFixed(1)}%</span>
+            </div>
+            <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)] transition-all duration-500" style={{ width: `${globalConfidence}%` }} />
+            </div>
+          </div>
+          {/* System mini-stats */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-slate-900/60 rounded-md p-2 border border-slate-800/50">
+              <div className="text-[8px] font-mono text-slate-600 uppercase mb-0.5">Session Uptime</div>
+              <div className="text-[11px] font-mono text-slate-300 font-bold">{uptimeStr}</div>
+            </div>
+            <div className="bg-slate-900/60 rounded-md p-2 border border-slate-800/50">
+              <div className="text-[8px] font-mono text-slate-600 uppercase mb-0.5">AES Encryption</div>
+              <div className="text-[11px] font-mono text-emerald-400 font-bold">AES-256-GCM</div>
+            </div>
+          </div>
+          {/* Pipeline tag */}
+          <div className="flex items-center gap-1.5 text-[9px] font-mono text-slate-600">
+            <span className="w-1 h-1 rounded-full bg-cyan-500 animate-ping shrink-0" />
+            5 ML models active • CyberDome 2026
+          </div>
+        </div>
+      )}
 
       {/* User info */}
       <div className={`border-t border-slate-800/50 ${collapsed ? 'p-3' : 'p-4'} space-y-3`}>

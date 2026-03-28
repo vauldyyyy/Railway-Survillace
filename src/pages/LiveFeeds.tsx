@@ -4,6 +4,7 @@ import {
   Maximize2, X, AlertTriangle, ShieldAlert, Flame,
   Users, Package, Train, Camera, Wifi, WifiOff
 } from 'lucide-react';
+import useSystemStore from '../store/useSystemStore';
 
 // ─── Camera definitions ────────────────────────────────────────────────────
 
@@ -111,6 +112,7 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
   const [alerts, setAlerts] = useState<AlertEntry[]>([]);
   const [backendOk, setBackendOk] = useState(true);
   const [stats, setStats] = useState({ total_tracked: 0, flagged: 0, cameras_active: 6, recent_alerts: 0 });
+  const globalConfidence = useSystemStore(state => state.globalConfidence);
 
   // Poll alerts + stats
   useEffect(() => {
@@ -200,6 +202,7 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
               cam={cam}
               isReal={!!cam.streamUrl}
               onZoom={() => cam.streamUrl && setZoomed(cam)}
+              confidence={globalConfidence}
             />
           ))}
         </div>
@@ -229,8 +232,8 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
 // ─── Camera Card ───────────────────────────────────────────────────────────
 
 function CameraCard({
-  cam, isReal, onZoom
-}: { cam: CamDef; isReal: boolean; onZoom: () => void }) {
+  cam, isReal, onZoom, confidence
+}: { cam: CamDef; isReal: boolean; onZoom: () => void; confidence?: number }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
@@ -309,10 +312,19 @@ function CameraCard({
         )}
 
         {/* Hover zoom overlay */}
-        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-          <div className="bg-[#0B0F19]/80 backdrop-blur p-2.5 rounded-full border border-slate-700 text-white">
+        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer" onClick={onZoom}>
+          <div className="bg-[#0B0F19]/80 backdrop-blur p-2.5 rounded-full border border-slate-700 text-white pointer-events-none">
             <Maximize2 size={20} />
           </div>
+        </div>
+        {/* Live HUD - Right Bottom */}
+        <div className="absolute bottom-2 right-2 flex flex-col items-end gap-1 pointer-events-none">
+          {confidence && isReal && !errored && (
+            <div className="bg-[#0B0F19]/90 border border-slate-700/50 px-2 py-1 rounded shadow-lg text-right backdrop-blur-sm pointer-events-auto">
+              <div className="text-[9px] font-mono text-slate-500 uppercase">Detection Conf</div>
+              <div className="text-xs font-mono font-bold text-cyan-400">{confidence.toFixed(1)}%</div>
+            </div>
+          )}
         </div>
       </div>
 

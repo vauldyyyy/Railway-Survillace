@@ -5,10 +5,11 @@ interface HeaderProps {
   title: string;
   subtitle?: string;
   children?: React.ReactNode;
+  rightContent?: React.ReactNode;
   onNavigate?: (page: string) => void;
 }
 
-export function Header({ title, subtitle, children, onNavigate }: HeaderProps) {
+export function Header({ title, subtitle, children, rightContent, onNavigate }: HeaderProps) {
   return (
     <header className="flex items-center justify-between px-8 py-5 border-b border-slate-800/60 bg-[#0B0F19]/80 backdrop-blur-sm sticky top-0 z-20">
       <div>
@@ -18,6 +19,7 @@ export function Header({ title, subtitle, children, onNavigate }: HeaderProps) {
       
       <div className="flex items-center gap-6">
         {children}
+        {rightContent}
         
         <div className="flex items-center gap-4 border-l border-slate-700 pl-6 ml-2">
           <button 

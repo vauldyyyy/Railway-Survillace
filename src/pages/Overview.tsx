@@ -1,7 +1,8 @@
 import React from 'react';
 import { Header } from '../components/Header';
-import { Video, AlertTriangle, UserSearch, Users, Shield, MapPin, Bell, User } from 'lucide-react';
+import { Video, AlertTriangle, UserSearch, Users, Shield, MapPin, Bell, User, Cpu, Zap, Lock } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import useSystemStore from '../store/useSystemStore';
 
 const crowdData = [
   { time: '12:00', history: 120 },
@@ -12,6 +13,19 @@ const crowdData = [
 ];
 
 export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
+  const globalConfidence = useSystemStore(state => state.globalConfidence);
+  const modelMetrics = useSystemStore(state => state.modelMetrics);
+  const threatLevel = useSystemStore(state => state.threatLevel);
+  const threatScore = useSystemStore(state => state.threatScore);
+  
+  const pipelineModels = [
+    { key: 'coco', name: 'YOLO-World', desc: 'Zero-Shot Vision', color: 'cyan', icon: <Cpu size={14} /> },
+    { key: 'railfod', name: 'RailFOD v8', desc: 'Object Detection', color: 'violet', icon: <Zap size={14} /> },
+    { key: 'tracker', name: 'OSNet ReID', desc: 'Cross-Camera Track', color: 'amber', icon: <UserSearch size={14} /> },
+    { key: 'lstm', name: 'LSTM v2.4', desc: 'Crowd Forecast', color: 'emerald', icon: <Users size={14} /> },
+    { key: 'uav', name: 'SecureGuard', desc: 'Adversarial Defense', color: 'rose', icon: <Shield size={14} /> },
+  ];
+  
   return (
     <div className="flex flex-col h-full">
       <Header 
@@ -93,6 +107,86 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
           </div>
         </div>
 
+        {/* ── AI Intelligence Pipeline ── */}
+        <div className="stat-card-premium rounded-lg p-5">
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+                <Cpu size={16} className="text-cyan-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">AI Intelligence Pipeline</h3>
+                <p className="text-[10px] text-slate-500 font-mono">5 Models Active • End-to-End Inference</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                PIPELINE ACTIVE
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-mono text-slate-500">AVG CONFIDENCE</div>
+                <div className="text-lg font-bold font-mono glow-text-cyan text-cyan-400">{globalConfidence.toFixed(1)}%</div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Pipeline nodes with flow lines */}
+          <div className="flex items-center gap-0">
+            {pipelineModels.map((model, i) => {
+              const metrics = modelMetrics[model.key as keyof typeof modelMetrics];
+              const isLast = i === pipelineModels.length - 1;
+              const colorMap: Record<string, string> = {
+                cyan: 'border-cyan-500/40 bg-cyan-500/5 text-cyan-400',
+                violet: 'border-violet-500/40 bg-violet-500/5 text-violet-400',
+                amber: 'border-amber-500/40 bg-amber-500/5 text-amber-400',
+                emerald: 'border-emerald-500/40 bg-emerald-500/5 text-emerald-400',
+                rose: 'border-rose-500/40 bg-rose-500/5 text-rose-400',
+              };
+              const glowMap: Record<string, string> = {
+                cyan: 'shadow-[0_0_12px_rgba(6,182,212,0.15)]',
+                violet: 'shadow-[0_0_12px_rgba(139,92,246,0.15)]',
+                amber: 'shadow-[0_0_12px_rgba(245,158,11,0.15)]',
+                emerald: 'shadow-[0_0_12px_rgba(16,185,129,0.15)]',
+                rose: 'shadow-[0_0_12px_rgba(244,63,94,0.15)]',
+              };
+              return (
+                <React.Fragment key={model.key}>
+                  <div className={`flex-1 rounded-lg border p-3 ${colorMap[model.color]} ${glowMap[model.color]} card-animate relative overflow-hidden`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      {model.icon}
+                      <span className="text-xs font-bold">{model.name}</span>
+                    </div>
+                    <div className="text-[9px] text-slate-500 font-mono mb-2">{model.desc}</div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] font-mono">
+                      <div className="text-slate-500">FPS</div>
+                      <div className="text-slate-300 text-right">{metrics?.fps?.toFixed(1) ?? '—'}</div>
+                      <div className="text-slate-500">Precision</div>
+                      <div className="text-slate-300 text-right">{((metrics?.precision ?? 0) * 100).toFixed(1)}%</div>
+                      <div className="text-slate-500">Status</div>
+                      <div className={`text-right ${metrics?.status === 'active' ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        {metrics?.status?.toUpperCase() ?? 'IDLE'}
+                      </div>
+                    </div>
+                  </div>
+                  {!isLast && (
+                    <div className="w-8 h-0.5 pipeline-flow shrink-0 rounded-full" />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+          
+          {/* Security footer */}
+          <div className="mt-3 pt-3 border-t border-slate-800/50 flex items-center gap-6 text-[9px] font-mono text-slate-600">
+            <span className="flex items-center gap-1"><Lock size={9} className="text-emerald-500" /> AES-256-GCM DB ENCRYPTION</span>
+            <span className="flex items-center gap-1"><Shield size={9} className="text-cyan-500" /> DIFFERENTIAL PRIVACY ε=1.2</span>
+            <span className="flex items-center gap-1"><Zap size={9} className="text-violet-500" /> ADVERSARIAL PATCH DEFENSE</span>
+            <span className="flex items-center gap-1"><Lock size={9} className="text-amber-500" /> PROMPT INJECTION GUARD</span>
+            <span className="ml-auto text-slate-500">THREAT INDEX: <span className={threatLevel === 'CRITICAL' ? 'text-red-400 glow-text-red' : threatLevel === 'HIGH' ? 'text-yellow-400' : 'text-emerald-400'}>{threatScore.toFixed(1)}/10 [{threatLevel}]</span></span>
+          </div>
+        </div>
+
         <div className="grid grid-cols-3 gap-6">
           {/* Live Threat Feed */}
           <div className="col-span-2 space-y-4">
@@ -110,7 +204,7 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
                 id="CAM_01_SOUTH" 
                 time="24.01.26 14:42:01" 
                 threat="SCANNING..." 
-                confidence={94.2} 
+                confidence={globalConfidence} 
                 image="http://localhost:8000/video/cam1"
               />
               

@@ -4,6 +4,7 @@ import {
   Search, Layers, ZoomIn, Target, ShieldCheck, Video,
   RefreshCw, Flag, CheckCircle, Trash2, WifiOff
 } from 'lucide-react';
+import useSystemStore from '../store/useSystemStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ export function PersonTracking({ onNavigate }: { onNavigate?: (page: any) => voi
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [backendOnline, setBackendOnline] = useState(true);
-  const [confidence] = useState(94.2);
+  const confidence = useSystemStore(state => state.globalConfidence);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Fetch tracklets from FastAPI ──────────────────────────────────────────
