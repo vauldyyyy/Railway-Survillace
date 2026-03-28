@@ -2,6 +2,7 @@ from ultralytics import YOLOWorld
 import cv2
 class ZeroShotDetector:
     def __init__(self):
+        self.current_classes = []
         print("[YOLO-World] Initializing Zero-Shot Open-Vocabulary Engine (yolov8s-worldv2.pt)...")
         try:
             self.model = YOLOWorld('yolov8s-worldv2.pt')
@@ -54,16 +55,28 @@ class ZeroShotDetector:
             return "warning"
         return "info"
 
-    def detect(self, frame, conf_threshold=0.15):
+    def detect(self, frame, conf_threshold=None, condition="normal"):
         """
         Executes a zero-shot inference pass over the target frame using the active vocabulary.
-        Returns mapped dictionaries containing the bounding boxes and operational severity.
+        Dynamically adjusts confidence threshold based on environmental conditions.
         """
         if not self.model:
             return []
 
+        # Research-backed Dynamic Thresholds: Lower in bad conditions to maintain recall.
+        # False positives are later suppressed by the TemporalFilter.
+        thresholds = {
+            "normal": 0.25,
+            "rain":   0.18,
+            "fog":    0.15,
+            "night":  0.12,
+        }
+        
+        # Use provided threshold or condition-based lookup
+        active_conf = conf_threshold if conf_threshold is not None else thresholds.get(condition, 0.20)
+
         # YOLO-World native prediction sweep
-        results = self.model.predict(frame, conf=conf_threshold, verbose=False)
+        results = self.model.predict(frame, conf=active_conf, verbose=False)
         detections = []
         
         for r in results:

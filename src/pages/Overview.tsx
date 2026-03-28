@@ -1,10 +1,5 @@
 import React from 'react';
 import { Header } from '../components/Header';
-import { ModelPerformanceStrip } from '../components/ModelPerformanceStrip';
-import { AITransparencyPanel } from '../components/AITransparencyPanel';
-import { ThreatSeverityIndex } from '../components/ThreatSeverityIndex';
-import useAlertStore from '../store/useAlertStore.ts';
-import { ALERT_TYPES, SEVERITY_CONFIG } from '../store/useAlertStore.ts';
 import { Video, AlertTriangle, UserSearch, Users, Shield, MapPin, Bell, User } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
@@ -22,8 +17,7 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
       <Header 
         title="STATION OVERVIEW — MADGAON JUNCTION" 
         subtitle="MINISTRY OF RAILWAYS | ISEA PHASE III INITIATIVE | IIT MADRAS × BITS GOA"
-        onNavigate={onNavigate}
-      >
+        rightContent={
           <div className="flex items-center gap-6 text-sm">
             <div className="flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-full px-4 py-1.5 text-slate-300 cursor-pointer hover:bg-slate-800 transition-colors">
               <MapPin size={14} className="text-slate-400" />
@@ -36,7 +30,8 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
               <span className="ml-2 border-l border-slate-700 pl-2">24 JAN 2026 | 14:42:08 UTC</span>
             </div>
           </div>
-      </Header>
+        }
+      />
 
       <div className="p-8 space-y-6 flex-1 overflow-y-auto">
         {/* Stats Row */}
@@ -116,7 +111,7 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
                 time="24.01.26 14:42:01" 
                 threat="SCANNING..." 
                 confidence={94.2} 
-                image="http://127.0.0.1:8001/stream/cam1"
+                image="http://localhost:8000/video/cam1"
               />
               
               {/* CAM 4: YOUTUBE LIVE STREAM (FASTAPI) */}
@@ -124,7 +119,7 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
                 id="CAM_04_NORTH" 
                 time="24.01.26 14:42:02" 
                 status="LIVE" 
-                image="http://127.0.0.1:8001/stream/cam4" 
+                image="http://localhost:8000/video/cam4" 
               />
               
               <CameraFeed 
@@ -172,11 +167,35 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
 
           {/* Right Column */}
           <div className="space-y-6">
-            {/* Threat Severity Index */}
-            <ThreatSeverityIndex />
-
             {/* Active Alerts */}
-            <LiveAlertPanel />
+            <div className="bg-[#0B0F19] border border-slate-800/50 rounded-lg p-5">
+              <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
+                <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">ACTIVE ALERTS</h3>
+                <span className="text-[10px] text-red-400 font-mono">3 EVENTS PENDING</span>
+              </div>
+              <div className="space-y-3">
+                <AlertItem 
+                  type="CRITICAL THREAT" 
+                  time="14:40:12" 
+                  desc="Unattended Package — Platform 2 North" 
+                  actions={['DISPATCH', 'IGNORE']}
+                  critical
+                />
+                <AlertItem 
+                  type="CROWD WARNING" 
+                  time="14:38:55" 
+                  desc="Density Threshold Exceeded — Gate 4B" 
+                  actions={['MONITOR']}
+                  warning
+                />
+                <AlertItem 
+                  type="SYSTEM INFO" 
+                  time="14:35:00" 
+                  desc="Routine scan of Express 12455 completed" 
+                  info
+                />
+              </div>
+            </div>
 
             {/* Crowd Prediction */}
             <div className="bg-[#0B0F19] border border-slate-800/50 rounded-lg p-5">
@@ -213,56 +232,8 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
             </div>
           </div>
         </div>
-
-        {/* Model Performance Strip */}
-        <ModelPerformanceStrip />
       </div>
     </div>
-  );
-}
-
-/** Live alert panel wired to Zustand store */
-function LiveAlertPanel() {
-  const alerts = useAlertStore((s) => s.alerts);
-  const selectAlert = useAlertStore((s) => s.selectAlert);
-  const selectedAlert = useAlertStore((s) => s.selectedAlert);
-  const unacknowledgedCount = alerts.filter(a => !a.acknowledged).length;
-
-  return (
-    <>
-      <div className="bg-[#0B0F19] border border-slate-800/50 rounded-lg p-5">
-        <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-          <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">ACTIVE ALERTS</h3>
-          <span className="text-[10px] text-red-400 font-mono">{unacknowledgedCount} EVENTS PENDING</span>
-        </div>
-        <div className="space-y-3 max-h-[300px] overflow-y-auto">
-          {alerts.slice(0, 8).map((alert) => {
-            const typeConfig = ALERT_TYPES[alert.type];
-            const isSelected = selectedAlert?.id === alert.id;
-            return (
-              <div
-                key={alert.id}
-                onClick={() => selectAlert(isSelected ? null : alert.id)}
-                className={`cursor-pointer transition-all ${isSelected ? 'ring-1 ring-cyan-500/40 rounded' : ''}`}
-              >
-                <AlertItem
-                  type={typeConfig?.label || alert.type}
-                  time={new Date(alert.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  desc={`${alert.location} — ${alert.camera}`}
-                  critical={alert.severity === 'critical'}
-                  warning={alert.severity === 'warning'}
-                  info={alert.severity === 'info'}
-                  actions={alert.severity === 'critical' ? ['DISPATCH', 'IGNORE'] : alert.severity === 'warning' ? ['MONITOR'] : undefined}
-                />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* AI Transparency Panel */}
-      <AITransparencyPanel />
-    </>
   );
 }
 

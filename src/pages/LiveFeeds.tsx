@@ -1,294 +1,421 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from '../components/Header';
-import { Maximize2, ChevronDown, X, Search, Filter, AlertTriangle } from 'lucide-react';
+import {
+  Maximize2, X, AlertTriangle, ShieldAlert, Flame,
+  Users, Package, Train, Camera, Wifi, WifiOff
+} from 'lucide-react';
 
-const CAMERAS = [
+// ─── Camera definitions ────────────────────────────────────────────────────
+
+interface CamDef {
+  id: string;
+  label: string;
+  streamUrl: string;
+  location: string;
+  features: string[];
+  featureIcons: React.ReactNode[];
+}
+
+const CAMERAS: CamDef[] = [
   {
-    id: "CAM-01: MAIN CONCOURSE",
-    active: true,
-    image: "http://127.0.0.1:8001/stream/cam1",
-    stats: { person: 0, obj: 0, fps: 0, time: 'LIVE' },
-    zone: 'Concourse',
-    type: 'Optical'
+    id: 'cam1',
+    label: 'CAM-01',
+    location: 'Our Camera',
+    streamUrl: 'http://localhost:8000/video/cam1',
+    features: ['Baggage', 'Track', 'Crowd', 'Fire', 'Re-ID'],
+    featureIcons: [
+      <Package size={10} key="b" />,
+      <Train size={10} key="t" />,
+      <Users size={10} key="c" />,
+      <Flame size={10} key="f" />,
+      <Camera size={10} key="r" />,
+    ],
   },
   {
-    id: "CAM-04: PLATFORM 2 WEST",
-    warning: true,
-    image: "http://127.0.0.1:8001/stream/cam4",
-    stats: { threat: 0, fps: 0, time: 'LIVE' },
-    zone: 'Platform',
-    type: 'Optical'
+    id: 'cam2',
+    label: 'CAM-02',
+    location: 'Track View',
+    streamUrl: 'http://localhost:8000/video/cam2',
+    features: ['Track', 'Re-ID'],
+    featureIcons: [<Train size={10} key="t" />, <Camera size={10} key="r" />],
   },
   {
-    id: "CAM-07: PERIMETER FENCE (THERMAL)",
-    thermal: true,
-    image: "http://127.0.0.1:8001/stream/cam7",
-    stats: { heat: 0, fps: 0, time: 'LIVE' },
-    zone: 'Perimeter',
-    type: 'Thermal'
+    id: 'cam3',
+    label: 'CAM-03',
+    location: 'Platform View',
+    streamUrl: 'http://localhost:8000/video/cam3',
+    features: ['Baggage', 'Crowd', 'Re-ID'],
+    featureIcons: [
+      <Package size={10} key="b" />,
+      <Users size={10} key="c" />,
+      <Camera size={10} key="r" />,
+    ],
   },
-  { id: "CAM-08: NORTH_GATE_LOADING", dark: true, stats: { person: 0, time: '14:22:01:04' }, zone: 'Gate', type: 'Optical' },
-  { id: "CAM-12: SWITCH_STATION_B", dark: true, stats: { person: 0, time: '14:22:01:04' }, zone: 'Station', type: 'Optical' },
-  { id: "CAM-14: TRACK_INSPECTION_UNDER", dark: true, stats: { person: 0, time: '14:22:01:04' }, zone: 'Track', type: 'Optical' },
-  { id: "CAM-16: WAITING_LOUNGE_V6", dark: true, stats: { person: 4, time: '14:22:01:04' }, zone: 'Lounge', type: 'Optical' },
-  { id: "CAM-19: EXIT_TURNSTILE_02", dark: true, stats: { person: 8, time: '14:22:01:04' }, zone: 'Gate', type: 'Optical' },
   {
-    id: "CAM-22: ROOFTOP_HVAC_SECURITY",
-    dark: true,
-    stats: { person: 0 },
-    zone: 'Roof',
-    type: 'Optical',
-    overlay: (
-      <div className="absolute bottom-4 right-4 bg-[#0B0F19]/90 border border-slate-700 rounded p-3 text-[10px] font-mono min-w-[200px]">
-        <div className="flex justify-between mb-2">
-          <span className="text-slate-400">AI AGENT CONSENSUS</span>
-          <span className="text-slate-200 font-bold">98.4%</span>
-        </div>
-        <div className="w-full h-1 bg-slate-800 rounded-full mb-3">
-          <div className="h-full bg-cyan-500 w-[98.4%]"></div>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">NODE_HEALTH</span>
-          <span className="text-emerald-400">OPTIMAL</span>
-        </div>
-      </div>
-    )
-  }
+    id: 'cam4',
+    label: 'CAM-04',
+    location: 'Entry View',
+    streamUrl: 'http://localhost:8000/video/cam4',
+    features: ['Re-ID'],
+    featureIcons: [<Camera size={10} key="r" />],
+  },
+  {
+    id: 'cam5',
+    label: 'CAM-05',
+    location: 'Exit View',
+    streamUrl: 'http://localhost:8000/video/cam5',
+    features: ['Re-ID'],
+    featureIcons: [<Camera size={10} key="r" />],
+  },
+  {
+    id: 'cam6',
+    label: 'CAM-06',
+    location: 'Edge Camera',
+    streamUrl: 'http://localhost:8000/video/cam6',
+    features: ['Baggage', 'Crowd', 'Re-ID'],
+    featureIcons: [
+      <Package size={10} key="b" />,
+      <Users size={10} key="c" />,
+      <Camera size={10} key="r" />,
+    ],
+  },
+  // Placeholder slots so 3x3 grid looks full
+  { id: 'p1', label: 'CAM-07', location: 'Reserved', streamUrl: '', features: [], featureIcons: [] },
+  { id: 'p2', label: 'CAM-08', location: 'Reserved', streamUrl: '', features: [], featureIcons: [] },
+  { id: 'p3', label: 'CAM-09', location: 'Reserved', streamUrl: '', features: [], featureIcons: [] },
 ];
 
+// Feature badge colours
+const FEATURE_COLORS: Record<string, string> = {
+  Baggage: 'text-orange-400 border-orange-500/40 bg-orange-500/10',
+  Track:   'text-red-400   border-red-500/40   bg-red-500/10',
+  Crowd:   'text-yellow-400 border-yellow-500/40 bg-yellow-500/10',
+  Fire:    'text-rose-400  border-rose-500/40  bg-rose-500/10',
+  'Re-ID': 'text-cyan-400  border-cyan-500/40  bg-cyan-500/10',
+};
+
+// ─── Alert Banner ──────────────────────────────────────────────────────────
+
+interface AlertEntry {
+  id: string;
+  cam: string;
+  type: string;
+  desc: string;
+  ts: number;
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────
+
 export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) {
-  const [layout, setLayout] = useState<'1x1' | '2x2' | '3x3' | '4x4'>('3x3');
-  const [filter, setFilter] = useState('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [zoomedCamera, setZoomedCamera] = useState<any | null>(null);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [zoomed, setZoomed] = useState<CamDef | null>(null);
+  const [alerts, setAlerts] = useState<AlertEntry[]>([]);
+  const [backendOk, setBackendOk] = useState(true);
+  const [stats, setStats] = useState({ total_tracked: 0, flagged: 0, cameras_active: 6, recent_alerts: 0 });
 
-  const filteredCameras = useMemo(() => {
-    return CAMERAS.filter(cam => {
-      const matchesFilter = filter === 'ALL' || cam.zone === filter || cam.type === filter || (filter === 'THREATS' && cam.warning);
-      const matchesSearch = cam.id.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesFilter && matchesSearch;
-    });
-  }, [filter, searchQuery]);
+  // Poll alerts + stats
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [aRes, sRes] = await Promise.all([
+          fetch('http://localhost:8000/api/alerts'),
+          fetch('http://localhost:8000/api/stats'),
+        ]);
+        if (aRes.ok) setAlerts(await aRes.json());
+        if (sRes.ok) setStats(await sRes.json());
+        setBackendOk(true);
+      } catch {
+        setBackendOk(false);
+      }
+    };
+    fetchData();
+    const t = setInterval(fetchData, 3000);
+    return () => clearInterval(t);
+  }, []);
 
-  const gridCols = {
-    '1x1': 'grid-cols-1',
-    '2x2': 'grid-cols-2',
-    '3x3': 'grid-cols-3',
-    '4x4': 'grid-cols-4',
-  }[layout];
+  const liveCams = CAMERAS.slice(0, 6);
+  const allCams = CAMERAS; // 9 slots for 3x3
 
   return (
-    <div className="flex flex-col h-full relative">
-      <Header 
-        title="LIVE SURVEILLANCE FEEDS" 
-        subtitle="Madgaon Junction — Zone A Security Perimeter"
+    <div className="flex flex-col h-full">
+      <Header
+        title="LIVE SURVEILLANCE FEEDS"
+        subtitle="Madgaon Junction — 6 Active Cameras | AI Analysis Running"
         onNavigate={onNavigate}
       >
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input 
-              type="text" 
-              placeholder="Search cameras..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-[#151C2C] border border-slate-700 rounded-md pl-9 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50 w-48"
-            />
-          </div>
-          <div className="flex bg-[#151C2C] border border-slate-700 rounded-md overflow-hidden text-xs font-mono">
-            {(['1x1', '2x2', '3x3', '4x4'] as const).map(l => (
-              <button 
-                key={l}
-                onClick={() => setLayout(l)}
-                className={`px-3 py-1.5 ${layout === l ? 'bg-slate-700 text-slate-200' : 'text-slate-400 hover:bg-slate-800'} ${l !== '1x1' ? 'border-l border-slate-700' : ''}`}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-400 font-mono relative">
-            <span>FILTER:</span>
-            <button 
-              onClick={() => setShowFilterMenu(!showFilterMenu)}
-              className="flex items-center gap-2 bg-[#151C2C] border border-slate-700 rounded-md px-3 py-1.5 hover:bg-slate-800"
-            >
-              {filter === 'ALL' ? 'ALL CAMERAS' : filter} <ChevronDown size={14} />
-            </button>
-            {showFilterMenu && (
-              <div className="absolute top-full right-0 mt-1 w-40 bg-[#151C2C] border border-slate-700 rounded-md shadow-xl z-50 py-1">
-                {['ALL', 'THREATS', 'Optical', 'Thermal', 'Concourse', 'Platform', 'Gate'].map(f => (
-                  <button
-                    key={f}
-                    onClick={() => { setFilter(f); setShowFilterMenu(false); }}
-                    className="w-full text-left px-4 py-2 hover:bg-slate-800 text-slate-300"
-                  >
-                    {f === 'ALL' ? 'All Cameras' : f}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+        <div className={`flex items-center gap-2 text-[10px] font-mono px-3 py-1 rounded-full border ${
+          backendOk
+            ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
+            : 'border-red-500/40 text-red-400 bg-red-500/10'
+        }`}>
+          {backendOk
+            ? <><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />AI ENGINE LIVE</>
+            : <><WifiOff size={10} /> BACKEND OFFLINE</>
+          }
         </div>
       </Header>
 
-      <div className="p-6 flex-1 overflow-y-auto">
-        <div className={`grid ${gridCols} gap-4 h-full auto-rows-fr`}>
-          {filteredCameras.map((cam, idx) => (
-            <FeedCard 
-              key={idx}
-              {...cam}
-              onClick={() => setZoomedCamera(cam)}
-            />
-          ))}
-          {filteredCameras.length === 0 && (
-            <div className="col-span-full flex items-center justify-center text-slate-500 font-mono">
-              NO CAMERAS MATCHING CRITERIA
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Zoom Modal */}
-      {zoomedCamera && (
-        <div className="fixed inset-0 z-50 bg-[#0B0F19]/95 backdrop-blur-sm flex items-center justify-center p-8">
-          <div className="w-full h-full max-w-6xl max-h-[80vh] flex flex-col bg-[#151C2C] border border-slate-700 rounded-lg overflow-hidden shadow-2xl">
-            <div className="flex justify-between items-center p-4 border-b border-slate-800 bg-[#0B0F19]">
-              <div className="flex items-center gap-3">
-                <div className={`w-3 h-3 rounded-full ${zoomedCamera.active ? 'bg-emerald-500' : zoomedCamera.warning ? 'bg-red-500 animate-pulse' : zoomedCamera.thermal ? 'bg-blue-500' : 'bg-slate-600'}`}></div>
-                <h2 className="text-lg font-mono font-bold text-slate-200">{zoomedCamera.id}</h2>
-                <span className="text-xs font-mono text-slate-500 bg-slate-800 px-2 py-1 rounded">LIVE FEED</span>
-              </div>
-              <button 
-                onClick={() => { setZoomedCamera(null); setZoomLevel(1); }}
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="flex-1 relative bg-black overflow-hidden flex items-center justify-center">
-              {zoomedCamera.image ? (
-                <div className="w-full h-full relative transition-transform duration-300" style={{ transform: `scale(${zoomLevel})` }}>
-                  <img 
-                    src={zoomedCamera.image} 
-                    alt={zoomedCamera.id} 
-                    className={`w-full h-full object-contain ${zoomedCamera.thermal ? 'sepia-[.8] hue-rotate-[320deg] saturate-[3]' : zoomedCamera.dark ? 'opacity-50 grayscale blur-[1px]' : ''}`}
-                  />
-                  {zoomedCamera.overlay}
-                </div>
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-slate-700 font-mono text-xl">
-                  {zoomedCamera.id.split(':')[1]?.trim() || zoomedCamera.id}
-                </div>
-              )}
-              
-              {/* Extra Zoom Controls Overlay */}
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 bg-[#0B0F19]/80 backdrop-blur border border-slate-700 rounded-full p-2 z-10">
-                <button onClick={() => setZoomLevel(1)} className={`px-4 py-1 text-xs font-mono rounded-full ${zoomLevel === 1 ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800'}`}>1x</button>
-                <button onClick={() => setZoomLevel(2)} className={`px-4 py-1 text-xs font-mono rounded-full ${zoomLevel === 2 ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800'}`}>2x</button>
-                <button onClick={() => setZoomLevel(4)} className={`px-4 py-1 text-xs font-mono rounded-full ${zoomLevel === 4 ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-300 hover:text-cyan-400 hover:bg-slate-800'}`}>4x</button>
-                <div className="w-px bg-slate-700 mx-1"></div>
-                <button className="px-4 py-1 text-xs font-mono text-slate-300 hover:text-red-400 hover:bg-slate-800 rounded-full flex items-center gap-2">
-                  <AlertTriangle size={12} /> FLAG
-                </button>
-              </div>
-            </div>
+      {/* Alert ticker */}
+      {alerts.length > 0 && (
+        <div className="bg-red-950/30 border-b border-red-900/50 px-6 py-2 flex items-center gap-4 overflow-hidden">
+          <span className="text-[10px] font-mono text-red-400 font-bold shrink-0 flex items-center gap-1">
+            <AlertTriangle size={12} className="animate-pulse" /> LIVE ALERTS
+          </span>
+          <div className="flex gap-6 overflow-x-auto no-scrollbar">
+            {alerts.slice(0, 5).map(a => (
+              <span key={a.id} className="text-[10px] font-mono text-slate-300 whitespace-nowrap">
+                <span className={`mr-1 ${
+                  a.type === 'FIRE' || a.type === 'SMOKE' ? 'text-rose-400' :
+                  a.type === 'TRACK_INTRUSION' ? 'text-red-400' :
+                  a.type === 'UNATTENDED_BAGGAGE' ? 'text-orange-400' :
+                  a.type === 'OVERCROWDING' ? 'text-yellow-400' : 'text-slate-400'
+                }`}>[{a.type}]</span>
+                {a.cam} — {a.desc}
+              </span>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Footer Status Bar */}
-      <div className="bg-[#0B0F19] border-t border-slate-800 px-6 py-3 flex items-center justify-between text-[10px] font-mono text-slate-400">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span>THREAT LEVEL</span>
-            <div className="flex gap-1">
-              <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-              <div className="w-2 h-2 rounded-full bg-slate-700"></div>
-              <div className="w-2 h-2 rounded-full bg-slate-700"></div>
-              <div className="w-2 h-2 rounded-full bg-slate-700"></div>
+      {/* Stats row */}
+      <div className="px-6 py-3 border-b border-slate-800 grid grid-cols-4 gap-4">
+        {[
+          { label: 'CAMERAS ACTIVE', value: `${stats.cameras_active}/6`, color: 'text-cyan-400' },
+          { label: 'PERSONS TRACKED', value: stats.total_tracked, color: 'text-slate-200' },
+          { label: 'FLAGGED', value: stats.flagged, color: stats.flagged > 0 ? 'text-red-400' : 'text-slate-400' },
+          { label: 'RECENT ALERTS (5m)', value: stats.recent_alerts, color: stats.recent_alerts > 0 ? 'text-yellow-400' : 'text-slate-400' },
+        ].map(s => (
+          <div key={s.label} className="bg-[#0B0F19] border border-slate-800 rounded px-4 py-2">
+            <div className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">{s.label}</div>
+            <div className={`text-xl font-light font-mono ${s.color}`}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 3×3 Camera Grid */}
+      <div className="flex-1 p-6 overflow-auto">
+        <div className="grid grid-cols-3 gap-4 h-full" style={{ gridAutoRows: '1fr' }}>
+          {allCams.map(cam => (
+            <CameraCard
+              key={cam.id}
+              cam={cam}
+              isReal={!!cam.streamUrl}
+              onZoom={() => cam.streamUrl && setZoomed(cam)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Feature Legend */}
+      <div className="px-6 py-3 border-t border-slate-800 bg-[#0B0F19] flex items-center gap-6 flex-wrap">
+        <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">AI FEATURES:</span>
+        {Object.entries(FEATURE_COLORS).map(([name, cls]) => (
+          <span key={name} className={`text-[10px] font-mono px-2 py-0.5 rounded border ${cls}`}>
+            {name}
+          </span>
+        ))}
+        <span className="ml-auto text-[10px] font-mono text-slate-500">
+          ENC: AES-256-GCM | DP: ε=1.2 | OPERATOR: RPF_GOA_01
+        </span>
+      </div>
+
+      {/* Zoom Modal */}
+      {zoomed && (
+        <ZoomModal cam={zoomed} onClose={() => setZoomed(null)} />
+      )}
+    </div>
+  );
+}
+
+// ─── Camera Card ───────────────────────────────────────────────────────────
+
+function CameraCard({
+  cam, isReal, onZoom
+}: { cam: CamDef; isReal: boolean; onZoom: () => void }) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+
+  // Reset error when cam changes
+  useEffect(() => { setErrored(false); setLoaded(false); }, [cam.id]);
+
+  if (!isReal) {
+    return (
+      <div className="bg-[#0B0F19] border border-slate-800 rounded-lg overflow-hidden flex flex-col">
+        <div className="px-3 py-2 border-b border-slate-800/50 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-slate-700" />
+          <span className="text-[10px] font-mono text-slate-600">{cam.label} • {cam.location}</span>
+        </div>
+        <div className="flex-1 flex items-center justify-center bg-[#060a12]">
+          <div className="text-slate-700 font-mono text-xs text-center">
+            <Camera size={20} className="mx-auto mb-2 opacity-30" />
+            RESERVED SLOT
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="bg-[#0B0F19] border border-slate-800 rounded-lg overflow-hidden flex flex-col group cursor-pointer hover:border-cyan-500/40 transition-colors relative"
+      onClick={onZoom}
+    >
+      {/* Card Header */}
+      <div className="px-3 py-2 border-b border-slate-800/50 flex items-center gap-2 bg-[#0B0F19]/90 z-10">
+        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+        <span className="text-[10px] font-mono text-cyan-400 font-semibold">{cam.label}</span>
+        <span className="text-[10px] font-mono text-slate-500">• {cam.location}</span>
+        <div className="ml-auto flex gap-1">
+          {cam.features.map((f, i) => (
+            <span
+              key={f}
+              className={`text-[8px] font-mono px-1.5 py-0.5 rounded border flex items-center gap-0.5 ${FEATURE_COLORS[f] ?? 'text-slate-400 border-slate-700'}`}
+              title={f}
+            >
+              {cam.featureIcons[i]}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Stream */}
+      <div className="flex-1 relative bg-[#060a12] overflow-hidden" style={{ minHeight: '160px' }}>
+        {!errored ? (
+          <>
+            {!loaded && (
+              <div className="absolute inset-0 flex items-center justify-center z-10">
+                <div className="text-slate-600 font-mono text-[10px] text-center">
+                  <div className="w-4 h-4 border border-cyan-500/40 border-t-cyan-400 rounded-full animate-spin mx-auto mb-1" />
+                  CONNECTING...
+                </div>
+              </div>
+            )}
+            <img
+              ref={imgRef}
+              src={cam.streamUrl}
+              alt={cam.label}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setLoaded(true)}
+              onError={() => setErrored(true)}
+            />
+          </>
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-slate-600 font-mono text-xs text-center">
+              <WifiOff size={18} className="mx-auto mb-1 opacity-40" />
+              NO SIGNAL
             </div>
-            <span className="text-emerald-500 ml-1">LOW_STEADY</span>
           </div>
-          <div>
-            <span>STATION LOAD</span>
-            <span className="text-cyan-400 ml-2">64.2% NOMINAL</span>
+        )}
+
+        {/* Hover zoom overlay */}
+        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+          <div className="bg-[#0B0F19]/80 backdrop-blur p-2.5 rounded-full border border-slate-700 text-white">
+            <Maximize2 size={20} />
           </div>
         </div>
-        <div className="flex items-center gap-6">
-          <span>RECD_BUFFER: 94%</span>
-          <span>ENC: AES-256-GCM</span>
-          <span>OPERATOR: RPF_GOA_01</span>
+      </div>
+
+      {/* Card Footer */}
+      <div className="px-3 py-1.5 bg-[#060a12] border-t border-slate-800/50 flex justify-between items-center">
+        <div className="flex gap-3 text-[9px] font-mono text-slate-500">
+          {cam.features.map(f => (
+            <span key={f} className={`${FEATURE_COLORS[f]?.split(' ')[0] ?? 'text-slate-500'}`}>{f}</span>
+          ))}
         </div>
+        <span className="text-[9px] font-mono text-slate-600">LIVE</span>
       </div>
     </div>
   );
 }
 
-function FeedCard({ id, active, warning, thermal, dark, image, overlay, stats, onClick }: any) {
+// ─── Zoom Modal ────────────────────────────────────────────────────────────
+
+function ZoomModal({ cam, onClose }: { cam: CamDef; onClose: () => void }) {
+  const [zoomLevel, setZoomLevel] = useState(1);
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   return (
-    <div 
-      className="bg-[#151C2C] border border-slate-800 rounded-lg overflow-hidden flex flex-col relative group cursor-pointer hover:border-cyan-500/50 transition-colors"
-      onClick={onClick}
+    <div
+      className="fixed inset-0 z-50 bg-[#05080F]/95 backdrop-blur-sm flex items-center justify-center p-6"
+      onClick={onClose}
     >
-      {/* Header */}
-      <div className="px-3 py-2 flex items-center gap-2 text-[10px] font-mono border-b border-slate-800/50 absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-[#0B0F19]/80 to-transparent">
-        <div className={`w-2 h-2 rounded-full ${active ? 'bg-emerald-500' : warning ? 'bg-red-500 animate-pulse' : thermal ? 'bg-blue-500' : 'bg-slate-600'}`}></div>
-        <span className="text-slate-200 font-semibold tracking-wider drop-shadow-md">{id}</span>
-        {active && <span className="ml-auto text-slate-400">LOCKED: 45.2°N</span>}
-      </div>
-
-      {/* Video Area */}
-      <div className="flex-1 relative bg-slate-900 overflow-hidden">
-        {image ? (
-          <img 
-            src={image} 
-            alt={id} 
-            className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 ${thermal ? 'sepia-[.8] hue-rotate-[320deg] saturate-[3]' : dark ? 'opacity-30 grayscale blur-[1px]' : 'opacity-80'}`}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-slate-700 font-mono text-sm">
-            {id.split(':')[1]?.trim() || id}
+      <div
+        className="w-full max-w-5xl bg-[#0B0F19] border border-slate-700 rounded-xl overflow-hidden shadow-2xl flex flex-col"
+        style={{ maxHeight: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-800 bg-[#060a12]">
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <div>
+              <h2 className="text-base font-mono font-bold text-slate-200">{cam.label} — {cam.location}</h2>
+              <p className="text-[10px] font-mono text-slate-500 mt-0.5">
+                FEATURES: {cam.features.join(' • ')}
+              </p>
+            </div>
           </div>
-        )}
-        {overlay}
-        
-        {/* Hover Zoom Icon */}
-        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none z-20">
-          <div className="bg-[#0B0F19]/80 backdrop-blur p-3 rounded-full border border-slate-700 text-white">
-            <Maximize2 size={24} />
+          <button
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Stream */}
+        <div className="flex-1 relative bg-black overflow-hidden flex items-center justify-center" style={{ minHeight: '400px' }}>
+          <div
+            className="w-full h-full transition-transform duration-300 origin-center"
+            style={{ transform: `scale(${zoomLevel})` }}
+          >
+            <img
+              src={cam.streamUrl}
+              alt={cam.label}
+              className="w-full h-full object-contain"
+            />
+          </div>
+
+          {/* Zoom controls */}
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-1 bg-[#0B0F19]/80 backdrop-blur border border-slate-700 rounded-full px-2 py-1.5 z-10">
+            {[1, 2, 4].map(z => (
+              <button
+                key={z}
+                onClick={() => setZoomLevel(z)}
+                className={`px-4 py-1 text-xs font-mono rounded-full transition-colors ${
+                  zoomLevel === z
+                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                    : 'text-slate-400 hover:text-cyan-400 hover:bg-slate-800'
+                }`}
+              >
+                {z}×
+              </button>
+            ))}
+            <div className="w-px bg-slate-700 mx-1" />
+            <button className="px-3 py-1 text-xs font-mono text-red-400 hover:bg-red-500/10 rounded-full flex items-center gap-1.5 transition-colors">
+              <AlertTriangle size={11} /> FLAG
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* Footer Stats */}
-      <div className="px-3 py-2 bg-[#151C2C] border-t border-slate-800 flex justify-between items-center text-[10px] font-mono text-slate-400">
-        <div className="flex gap-4">
-          {stats?.person !== undefined && (
-            <div className="flex items-center gap-1">
-              <span className="text-slate-500">👤</span> {stats.person < 10 ? `0${stats.person}` : stats.person}
-            </div>
-          )}
-          {stats?.obj !== undefined && (
-            <div className="flex items-center gap-1">
-              <span className="text-slate-500">📦</span> {stats.obj < 10 ? `0${stats.obj}` : stats.obj}
-            </div>
-          )}
-          {stats?.threat !== undefined && (
-            <div className="flex items-center gap-1 text-red-400 font-bold">
-              <span>⚠️</span> {stats.threat < 10 ? `0${stats.threat}` : stats.threat} THREAT
-            </div>
-          )}
-          {stats?.heat !== undefined && (
-            <div className="flex items-center gap-1">
-              HEAT_SIG: {stats.heat < 10 ? `0${stats.heat}` : stats.heat}
-            </div>
-          )}
-        </div>
-        <div className="flex gap-4">
-          {stats?.fps && <span className="text-cyan-600">{stats.fps} FPS</span>}
-          <span>{stats?.time || '14:22:01:04'}</span>
+        {/* Feature badges */}
+        <div className="px-6 py-3 border-t border-slate-800 bg-[#060a12] flex items-center gap-3 flex-wrap">
+          <span className="text-[10px] font-mono text-slate-500">ACTIVE AI MODULES:</span>
+          {cam.features.map((f, i) => (
+            <span
+              key={f}
+              className={`text-[10px] font-mono px-2.5 py-1 rounded border flex items-center gap-1.5 ${FEATURE_COLORS[f] ?? ''}`}
+            >
+              {cam.featureIcons[i]} {f}
+            </span>
+          ))}
         </div>
       </div>
     </div>
