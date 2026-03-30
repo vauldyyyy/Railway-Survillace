@@ -14,13 +14,15 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { Page } from '../App';
+import { Page, OperatorInfo } from '../App';
 import useSystemStore from '../store/useSystemStore';
 import useAlertStore from '../store/useAlertStore';
 
 interface SidebarProps {
   currentPage: string;
-  onNavigate: (page: Page) => void;
+  onNavigate:  (page: Page) => void;
+  onLogout?:   () => void;               // ← new: wired from App
+  operator?:   OperatorInfo | null;      // ← new: real operator from JWT
 }
 
 const NAV_ITEMS = [
@@ -36,8 +38,10 @@ const NAV_ITEMS = [
   { id: 'notifications',     label: 'Notifications',    icon: Bell },
 ];
 
-export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
+export function Sidebar({ currentPage, onNavigate, onLogout, operator }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+
+  // ── All existing store subscriptions preserved exactly ────────────────────
   const globalConfidence = useSystemStore(state => state.globalConfidence);
   const wsConnected = useSystemStore(state => state.wsConnected);
   const gpuBridge = useSystemStore(state => state.gpuBridge);
@@ -48,7 +52,9 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
 
   useEffect(() => {
     const tick = () => {
-      setClock(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }));
+      setClock(new Date().toLocaleTimeString('en-IN', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }));
       setUptime(t => t + 1);
     };
     tick();
@@ -63,6 +69,10 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
   })();
 
+  // Display name: prefer real JWT operator, fall back to hardcoded
+  const displayName = operator?.display_name ?? 'RPF_GOA_01';
+  const roleLabel   = operator?.role         ?? 'SYSTEM_OPERATOR';
+
   return (
     <aside
       className={`
@@ -72,7 +82,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         ${collapsed ? 'w-16' : 'w-64'}
       `}
     >
-      {/* Toggle button */}
+      {/* ── Toggle button ── */}
       <button
         onClick={() => setCollapsed(c => !c)}
         className="
@@ -89,7 +99,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
       </button>
 
-      {/* Logo */}
+      {/* ── Logo ── */}
       <div className={`p-4 border-b border-slate-800/50 overflow-hidden ${collapsed ? 'px-3' : 'px-6'}`}>
         {collapsed ? (
           <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center">
@@ -106,9 +116,13 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
             <div className="mt-3 flex items-center justify-between">
               <div className="text-[11px] font-mono text-slate-300 font-bold">{clock}</div>
               <div className={`flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded ${
-                wsConnected ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-600 bg-slate-800'
+                wsConnected
+                  ? 'text-emerald-400 bg-emerald-500/10'
+                  : 'text-slate-600 bg-slate-800'
               }`}>
-                <span className={`w-1 h-1 rounded-full ${wsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+                <span className={`w-1 h-1 rounded-full ${
+                  wsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'
+                }`} />
                 {wsConnected ? 'WS LIVE' : 'WS OFF'}
               </div>
             </div>
@@ -116,7 +130,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         )}
       </div>
 
-      {/* GPU Bridge Status */}
+      {/* ── GPU Bridge Status ── */}
       {!collapsed && (
         <div className="px-4 py-2 border-b border-slate-800/50">
           <div className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-[10px] font-mono transition-all duration-500 ${
@@ -169,11 +183,11 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         </div>
       )}
 
-      {/* Nav */}
+      {/* ── Nav ── */}
       <nav className="flex-1 overflow-y-auto py-4 overflow-x-hidden">
         <ul className="space-y-0.5">
           {NAV_ITEMS.map(item => {
-            const Icon = item.icon;
+            const Icon     = item.icon;
             const isActive = currentPage === item.id;
             return (
               <li key={item.id}>
@@ -190,11 +204,9 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
                     }
                   `}
                 >
-                  {/* Active bar */}
                   {isActive && (
                     <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)]" />
                   )}
-
                   <Icon
                     size={18}
                     className={`shrink-0 ${isActive ? 'text-cyan-400' : 'text-slate-500 group-hover:text-slate-300'}`}
@@ -237,20 +249,21 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         </ul>
       </nav>
 
-      {/* ML Accuracy + System Stats display */}
+      {/* ── ML Accuracy + System Stats ── */}
       {!collapsed && (
         <div className="px-4 py-3 border-t border-slate-800/50 space-y-3">
-          {/* Confidence bar */}
           <div>
             <div className="text-[10px] font-mono text-slate-500 uppercase flex justify-between mb-1.5">
               <span>Model Accuracy</span>
               <span className="text-cyan-400 glow-text-cyan">{globalConfidence.toFixed(1)}%</span>
             </div>
             <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)] transition-all duration-500" style={{ width: `${globalConfidence}%` }} />
+              <div
+                className="h-full bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.8)] transition-all duration-500"
+                style={{ width: `${globalConfidence}%` }}
+              />
             </div>
           </div>
-          {/* System mini-stats */}
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-slate-900/60 rounded-md p-2 border border-slate-800/50">
               <div className="text-[8px] font-mono text-slate-600 uppercase mb-0.5">Session Uptime</div>
@@ -261,7 +274,6 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
               <div className="text-[11px] font-mono text-emerald-400 font-bold">AES-256-GCM</div>
             </div>
           </div>
-          {/* Pipeline tag */}
           <div className="flex items-center gap-1.5 text-[9px] font-mono text-slate-600">
             <span className="w-1 h-1 rounded-full bg-cyan-500 animate-ping shrink-0" />
             5 ML models active • CyberDome 2026
@@ -269,7 +281,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         </div>
       )}
 
-      {/* User info */}
+      {/* ── User info + Logout ── */}
       <div className={`border-t border-slate-800/50 ${collapsed ? 'p-3' : 'p-4'} space-y-3`}>
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
@@ -281,6 +293,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
               />
             </div>
             <button
+              onClick={onLogout}
               className="text-slate-500 hover:text-red-400 transition-colors"
               title="Logout"
             >
@@ -298,11 +311,18 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
                 />
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="text-xs font-bold text-slate-200 truncate">RPF_GOA_01</span>
-                <span className="text-[9px] text-emerald-500 uppercase tracking-wider">System Operational</span>
+                <span className="text-xs font-bold text-slate-200 truncate font-mono">
+                  {displayName}
+                </span>
+                <span className="text-[9px] text-emerald-500 uppercase tracking-wider">
+                  System Operational
+                </span>
               </div>
             </div>
-            <button className="flex items-center gap-3 text-sm text-slate-400 hover:text-red-400 transition-colors px-2 w-full uppercase tracking-wider font-semibold">
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-3 text-sm text-slate-400 hover:text-red-400 transition-colors px-2 w-full uppercase tracking-wider font-semibold"
+            >
               <LogOut size={16} />
               Logout
             </button>

@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import useAlertStore from './useAlertStore';
+import useAlertStore from './alertStore';   // ← fixed: was './useAlertStore'
 
+// ── Types ──────────────────────────────────────────────────────────────────────
 
-// ── Types ──
 export interface ModelMetrics {
   name: string;
   fps: number;
@@ -39,37 +39,26 @@ export interface EdgeNodeHealth {
 export type ThreatLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 interface SystemState {
-  // Threat index
-  threatLevel: ThreatLevel;
-  threatScore: number; // 0–10
-
-  // Cameras
-  cameras: Record<string, CameraState>;
-
-  // Model metrics
+  threatLevel:      ThreatLevel;
+  threatScore:      number;
+  cameras:          Record<string, CameraState>;
   modelMetrics: {
-    coco: ModelMetrics;
+    coco:    ModelMetrics;
     railfod: ModelMetrics;
-    uav: ModelMetrics;
-    lstm: ModelMetrics;
+    uav:     ModelMetrics;
+    lstm:    ModelMetrics;
     tracker: ModelMetrics;
   };
-
-  // Edge health
-  edgeNodes: EdgeNodeHealth[];
-
-  // System info
-  systemUptime: number;
-  lastSync: number;
-  wsConnected: boolean;
-  jwtToken: string | null;
+  edgeNodes:        EdgeNodeHealth[];
+  systemUptime:     number;
+  lastSync:         number;
+  wsConnected:      boolean;
+  jwtToken:         string | null;
   globalConfidence: number;
-
-  // GPU Bridge
   gpuBridge: {
-    mode: 'local' | 'remote';
-    connected: boolean;
-    latency_ms: number;
+    mode:             'local' | 'remote';
+    connected:        boolean;
+    latency_ms:       number;
     inference_source: 'local' | 'remote';
   };
 
@@ -87,17 +76,18 @@ interface SystemState {
   connectWebSocket: () => void;
 }
 
-// ── Simulated initial metrics ──
+// ── Default data ───────────────────────────────────────────────────────────────
+
 const defaultModel = (name: string, fps: number, gpu: number): ModelMetrics => ({
   name,
   fps,
-  latency_ms: Math.round(1000 / fps),
-  gpu_util_pct: gpu,
-  precision: 0.88 + Math.random() * 0.1,
-  recall: 0.82 + Math.random() * 0.12,
+  latency_ms:          Math.round(1000 / fps),
+  gpu_util_pct:        gpu,
+  precision:           0.88 + Math.random() * 0.1,
+  recall:              0.82 + Math.random() * 0.12,
   false_positive_rate: 0.02 + Math.random() * 0.05,
-  drift_score: Math.random() * 0.15,
-  status: 'active',
+  drift_score:         Math.random() * 0.15,
+  status:              'active',
 });
 
 const defaultCameras: Record<string, CameraState> = {
@@ -118,39 +108,42 @@ const defaultCameras: Record<string, CameraState> = {
 };
 
 const defaultEdgeNodes: EdgeNodeHealth[] = [
-  { id: 'EDGE_01', station: 'Madgaon Junction', status: 'healthy', cpu_pct: 42, gpu_pct: 68, memory_pct: 55, uptime_hours: 342, models_loaded: 4, last_heartbeat: Date.now() },
-  { id: 'EDGE_02', station: 'Thivim Station', status: 'healthy', cpu_pct: 38, gpu_pct: 52, memory_pct: 48, uptime_hours: 220, models_loaded: 4, last_heartbeat: Date.now() },
-  { id: 'EDGE_03', station: 'Vasco da Gama', status: 'degraded', cpu_pct: 78, gpu_pct: 91, memory_pct: 82, uptime_hours: 18, models_loaded: 3, last_heartbeat: Date.now() - 30000 },
+  { id: 'EDGE_01', station: 'Madgaon Junction', status: 'healthy',  cpu_pct: 42, gpu_pct: 68, memory_pct: 55, uptime_hours: 342, models_loaded: 4, last_heartbeat: Date.now() },
+  { id: 'EDGE_02', station: 'Thivim Station',   status: 'healthy',  cpu_pct: 38, gpu_pct: 52, memory_pct: 48, uptime_hours: 220, models_loaded: 4, last_heartbeat: Date.now() },
+  { id: 'EDGE_03', station: 'Vasco da Gama',    status: 'degraded', cpu_pct: 78, gpu_pct: 91, memory_pct: 82, uptime_hours: 18,  models_loaded: 3, last_heartbeat: Date.now() - 30000 },
 ];
 
-// ── Store ──
+// ── Store ──────────────────────────────────────────────────────────────────────
+
 const useSystemStore = create<SystemState>((set, get) => ({
-  threatLevel: 'HIGH',
-  threatScore: 7.2,
-  cameras: defaultCameras,
+  threatLevel:      'HIGH',
+  threatScore:      7.2,
+  cameras:          defaultCameras,
   modelMetrics: {
-    coco: defaultModel('YOLOv8n COCO', 32.1, 45),
-    railfod: defaultModel('RailFOD YOLOv8', 28.4, 12),
-    uav: defaultModel('UAV YOLOv8', 26.8, 10),
-    lstm: defaultModel('LSTM Crowd v2.4', 200, 0),
+    coco:    defaultModel('YOLOv8n COCO',      32.1, 45),
+    railfod: defaultModel('RailFOD YOLOv8',    28.4, 12),
+    uav:     defaultModel('UAV YOLOv8',        26.8, 10),
+    lstm:    defaultModel('LSTM Crowd v2.4',  200.0,  0),
     tracker: { ...defaultModel('ByteTrack', 30, 0), gpu_util_pct: 0 },
   },
-  edgeNodes: defaultEdgeNodes,
-  systemUptime: 342 * 3600,
-  lastSync: Date.now(),
-  wsConnected: false,
-  jwtToken: null,
+  edgeNodes:        defaultEdgeNodes,
+  systemUptime:     342 * 3600,
+  lastSync:         Date.now(),
+  wsConnected:      false,
+  jwtToken:         null,
   globalConfidence: 94.2,
   gpuBridge: {
-    mode: 'local',
-    connected: false,
-    latency_ms: 0,
+    mode:             'local',
+    connected:        false,
+    latency_ms:       0,
     inference_source: 'local',
   },
 
+  // ── Actions ────────────────────────────────────────────────────────────────
+
   updateThreatScore: (score) => {
     let level: ThreatLevel = 'LOW';
-    if (score >= 8) level = 'CRITICAL';
+    if      (score >= 8) level = 'CRITICAL';
     else if (score >= 6) level = 'HIGH';
     else if (score >= 3) level = 'MEDIUM';
     set({ threatScore: score, threatLevel: level });
@@ -159,28 +152,32 @@ const useSystemStore = create<SystemState>((set, get) => ({
   updateGlobalConfidence: (conf) => set({ globalConfidence: conf }),
 
   updateModelMetrics: (model, metrics) =>
-    set((state) => ({
+    set(state => ({
       modelMetrics: {
         ...state.modelMetrics,
-        [model]: { ...state.modelMetrics[model as keyof typeof state.modelMetrics], ...metrics },
+        [model]: {
+          ...state.modelMetrics[model as keyof typeof state.modelMetrics],
+          ...metrics,
+        },
       },
     })),
 
   updateCamera: (id, update) =>
-    set((state) => ({
+    set(state => ({
       cameras: {
         ...state.cameras,
         [id]: { ...state.cameras[id], ...update },
       },
     })),
 
-  setEdgeNodes: (nodes) => set({ edgeNodes: nodes }),
+  setEdgeNodes:   (nodes)     => set({ edgeNodes: nodes }),
   setWsConnected: (connected) => set({ wsConnected: connected }),
+
   updateBridgeStatus: (status) => set({
     gpuBridge: {
-      mode: (status.mode as 'local' | 'remote') || 'local',
-      connected: status.connected ?? false,
-      latency_ms: status.latency_ms ?? 0,
+      mode:             (status.mode as 'local' | 'remote') || 'local',
+      connected:        status.connected  ?? false,
+      latency_ms:       status.latency_ms ?? 0,
       inference_source: (status.inference_source as 'local' | 'remote') || 'local',
     },
   }),
@@ -235,17 +232,15 @@ const useSystemStore = create<SystemState>((set, get) => ({
     return false;
   },
 
+  // ── WebSocket ──────────────────────────────────────────────────────────────
   connectWebSocket: async () => {
-    let token = get().jwtToken;
+    const token = get().jwtToken || localStorage.getItem('railguard_token');
     if (!token) {
-      const success = await get().login();
-      if (!success) {
-        console.warn('[WS] Authentication failed, retrying in 5s...');
-        setTimeout(() => get().connectWebSocket(), 5000);
-        return;
-      }
-      token = get().jwtToken;
+      console.warn('[WS] No token — retrying in 5s...');
+      setTimeout(() => get().connectWebSocket(), 5000);
+      return;
     }
+    set({ jwtToken: token });
 
     const wsBase = 'ws://127.0.0.1:8001';
     const ws = new WebSocket(`${wsBase}/ws/alerts?token=${token}`);
@@ -257,55 +252,75 @@ const useSystemStore = create<SystemState>((set, get) => ({
 
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data);
+        const msg     = JSON.parse(event.data);
         const channel = msg.channel || 'alert';
 
         switch (channel) {
+
           case 'metrics':
             if (msg.payload?.model) {
               get().updateModelMetrics(msg.payload.model, msg.payload.metrics);
             }
             break;
+
           case 'camera':
             if (msg.payload?.camera_id) {
               get().updateCamera(msg.payload.camera_id, msg.payload);
             }
             break;
+
           case 'health':
             if (msg.payload?.edge_nodes) {
               get().setEdgeNodes(msg.payload.edge_nodes);
             }
             break;
+
           case 'threat':
             if (typeof msg.payload?.score === 'number') {
               get().updateThreatScore(msg.payload.score);
             }
             break;
+
+          // ── FIXED: now pushes into alertStore (same store as ThreatAlerts) ──
           case 'alert':
             if (msg.payload) {
               const p = msg.payload;
-              // Use backend-generated ID for dedup (cooldown already applied server-side)
+              // Entity-State V4 format: entity_id, base_class, threat_type (was new_state)
+              const cam = p.camera || p.camera_id || 'unknown';
+              const type = p.threat_type || p.type || p.new_state || 'UNKNOWN';
+              const level = p.threat_level || p.severity || 'info';
+              const entityId = p.entity_id || '';
+              const baseClass = p.base_class || '';
+
               useAlertStore.getState().addAlert({
-                id: p.id || `WS-${p.uuid || Date.now()}`,
-                type: p.type || 'UNKNOWN',
-                severity: (p.severity as any) || 'info',
-                camera: p.camera || 'unknown',
-                location: p.location || 'Railway Perimeter',
-                timestamp: p.timestamp ? p.timestamp * 1000 : Date.now(),
+                id: p.id || `${entityId || 'WS'}-${Date.now()}`,
+                type: type,
+                severity: (level.toLowerCase() as any),
+                camera: cam,
+                location: p.location || (cam.startsWith('CAM') ? `Platform ${cam.slice(-1)}` : 'Railway Perimeter'),
+                timestamp: p.timestamp ? (typeof p.timestamp === 'string' ? p.timestamp : new Date(p.timestamp * 1000).toISOString()) : new Date().toISOString(),
                 aiConfidence: Math.round((p.confidence || 0) * 100),
                 acknowledged: false,
-                description: p.description || undefined,
+                description: p.description || `${type} — Entity ${entityId} (${baseClass}) on ${cam}`,
                 transparency: {
-                  model_used: 'YOLO-World V3',
+                  model_used: 'RailGuard Entity-State V4.0',
                   confidence: p.confidence || 0,
-                  reasoning: [p.description || `${p.type} detected by AI pipeline`],
-                  track_id_history: p.uuid ? [p.uuid] : [],
+                  reasoning: p.reasoning || [`${type} detected by Entity-State Engine on ${cam}`],
+                  track_id_history: entityId ? [entityId] : [],
                   time_to_detection_ms: 0,
-                  bbox: p.box,
+                  bbox: p.box || p.bbox,
                 },
-              });
+                imageUrl: p.image || p.imageUrl || '', 
+                status: 'ACTIVE',
+                cam: cam,
+                ts: p.timestamp,
+                entityId: entityId,
+                baseClass: baseClass,
+                command: p.command || '',
+              } as any);
             }
             break;
+
           default:
             break;
         }
@@ -315,15 +330,17 @@ const useSystemStore = create<SystemState>((set, get) => ({
     };
 
     ws.onerror = () => set({ wsConnected: false });
+
     ws.onclose = () => {
       set({ wsConnected: false });
-      console.log('[WS] Disconnected, retrying in 5s...');
+      console.log('[WS] Disconnected — retrying in 5s...');
       setTimeout(() => get().connectWebSocket(), 5000);
     };
   },
 }));
 
-// ── Real ML metric synchronization ──
+// ── Real ML metric synchronisation (polls /api/stats every 2s) ───────────────
+
 export function startMetricsSimulation() {
   return setInterval(async () => {
     try {
@@ -348,31 +365,30 @@ export function startMetricsSimulation() {
             store.updateThreatScore(Math.max(0, store.threatScore - 0.5));
         }
       }
-    } catch (e) {
-       console.log("Stats sync error, backend may be offline.");
+    } catch {
+      // Backend offline — silent
     }
   }, 2000);
 }
 
-// ── GPU Bridge status polling ──
+// ── GPU Bridge status polling (every 5s) ──────────────────────────────────────
+
 export function startBridgePoller() {
   return setInterval(async () => {
     try {
       const res = await fetch('http://127.0.0.1:8001/api/bridge-status');
       if (res.ok) {
-        const data = await res.json();
-        useSystemStore.getState().updateBridgeStatus(data);
+        useSystemStore.getState().updateBridgeStatus(await res.json());
       }
     } catch {
-      // Backend offline — keep bridge disconnected
       useSystemStore.getState().updateBridgeStatus({
-        mode: 'local',
-        connected: false,
-        latency_ms: 0,
+        mode:             'local',
+        connected:        false,
+        latency_ms:       0,
         inference_source: 'local',
       });
     }
   }, 5000);
 }
 
-export default useSystemStore;
+export default useSystemStore;

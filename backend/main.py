@@ -14,6 +14,7 @@ import os
 import sys
 import time
 import json
+import datetime
 import asyncio
 import threading
 import subprocess
@@ -35,10 +36,13 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from fastapi import Request
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from security.auth import create_access_token, verify_token, verify_ws_token
+from core.security.auth import auth_engine
 
 try:
     from app.core.database import init_db, log_incident, log_model_metric
@@ -120,30 +124,36 @@ def broadcast_message(channel: str, payload: dict):
 
 
 def add_alert(alert: dict):
-    """Add TICE-validated alert with deduplication."""
+    """Add Entity-State alert with deduplication. Supports both V3 and V4 formats."""
     cam_id = alert.get("camera_id", "unknown")
-    threat_type = alert.get("threat_type", "UNKNOWN")
-    cooldown_key = f"{threat_type}_{cam_id}"
+    # V4 uses 'new_state', V3 uses 'threat_type'
+    threat_type = alert.get("new_state") or alert.get("threat_type", "UNKNOWN")
+    entity_id = alert.get("entity_id", "")
+    cooldown_key = f"{threat_type}_{cam_id}_{entity_id}"
     
     now_ts = time.time()
     last_fired = _alert_cooldown.get(cooldown_key, 0)
     
-    # 30s Cooldown as per Safety Rules, but CRITICAL overrides
-    if now_ts - last_fired < ALERT_COOLDOWN_SECONDS and alert.get("threat_level") != "CRITICAL":
+    # Entity-level cooldown: 10s per specific entity+state combo
+    # CRITICAL always passes through
+    if now_ts - last_fired < 10 and alert.get("threat_level") != "CRITICAL":
         return
     
     _alert_cooldown[cooldown_key] = now_ts
     
-    # JSON Schema Alignment (Mandatory Phase 5)
+    # Unified alert schema (Entity-State V4 + Legacy V3 compatible)
     clean_alert = {
-        "camera_id": str(cam_id).upper(),
-        "threat_type": threat_type,
+        "camera_id":    str(cam_id).upper(),
+        "entity_id":    entity_id,
+        "base_class":   alert.get("base_class", ""),
+        "threat_type":  threat_type,
         "threat_level": alert.get("threat_level", "INFO"),
-        "command": alert.get("command", "MONITOR_SITUATION"),
-        "notify": alert.get("notify", ["Security Monitor"]),
-        "escalation": alert.get("escalation", []),
-        "timestamp": alert.get("timestamp", datetime.datetime.now().isoformat()),
-        "confidence": alert.get("confidence", 0.0)
+        "command":      alert.get("command", "MONITOR_SITUATION"),
+        "notify":       alert.get("notify", ["Security Monitor"]),
+        "escalation":   alert.get("escalation", []),
+        "timestamp":    alert.get("timestamp", datetime.datetime.now().isoformat()),
+        "confidence":   alert.get("confidence", 0.0),
+        "box":          alert.get("box", []),
     }
     
     ALERTS.append(clean_alert)
@@ -170,6 +180,7 @@ class CameraWorker:
         self.resolution = (0, 0)
         self.latest_raw_frame = None
         self.latest_alerts = []
+        self.annotated_frame = None # Store pipeline output with squares
 
         # Decoupled buffer: capture thread writes, inference thread reads
         self._frame_buffer = deque(maxlen=2)  # Only keep latest 2 frames
@@ -275,10 +286,11 @@ class CameraWorker:
             
             _, jpg = cv2.imencode(".jpg", display_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
             with self._frame_lock:
+                # Always keep raw frame updated for high-FPS fallback
                 self.current_frame = jpg.tobytes()
                 self.last_update = time.time()
                 
-            time.sleep(0.02)  # Max ~50fps capture pacing
+            time.sleep(0.01)  # Max ~100fps capture pacing
 
     def _inference_loop(self):
         """Dedicated inference thread — pops latest frame from buffer, runs ML pipeline."""
@@ -301,7 +313,12 @@ class CameraWorker:
             try:
                 out_frame, alerts_tice, trajectories = pipeline.run(frame, self.camera_id)
                 self.latest_alerts = alerts_tice # TICE objects for overlay drawing
-                self.last_update = time.time()   # Heartbeat updated
+                
+                # Encode annotated frame with squares
+                _, jpg_annotated = cv2.imencode(".jpg", out_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                with self._frame_lock:
+                    self.annotated_frame = jpg_annotated.tobytes()
+                    self.last_update = time.time()   # Heartbeat updated
  
                 # Throttled metric broadcast
                 now = time.time()
@@ -418,7 +435,14 @@ app.loop = None
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -436,7 +460,7 @@ def _failsafe_loop():
         time.sleep(2)
         now = time.time()
         for cam_id, worker in stream_manager.workers.items():
-            if worker.is_running and (now - worker.last_update) > 3.0:
+            if worker.is_running and (now - worker.last_update) > 15.0:
                 print(f"[FAILSAFE-CRITICAL] Inference hung on {cam_id}!")
                 failsafe_msg = {
                     "camera_id": cam_id.upper(),
@@ -481,9 +505,11 @@ async def video_feed(camera_id: str):
 
         while True:
             with worker._frame_lock:
-                if worker.current_frame and worker.last_update > last_frame_time:
+                # Prefer annotated frame (with squares) over raw frame
+                frame_data = worker.annotated_frame if worker.annotated_frame else worker.current_frame
+                
+                if frame_data and worker.last_update > last_frame_time:
                     last_frame_time = worker.last_update
-                    frame_data = worker.current_frame
                     no_frame_counter = 0
                 else:
                     frame_data = None
@@ -496,7 +522,7 @@ async def video_feed(camera_id: str):
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + fallback_bytes + b'\r\n')
                 
-            await asyncio.sleep(0.03)
+            await asyncio.sleep(0.015)
 
     return StreamingResponse(mjpeg_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
 
@@ -585,11 +611,33 @@ def toggle_bridge():
 
 
 @app.post("/api/auth/token")
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
+def login_legacy(form_data: OAuth2PasswordRequestForm = Depends()):
     if form_data.username == "admin" and form_data.password == "railguard":
         token = create_access_token({"sub": form_data.username, "role": "soc_operator"})
         return {"access_token": token, "token_type": "bearer"}
     return JSONResponse(status_code=401, content={"detail": "Incorrect credentials"})
+
+class LoginRequest(BaseModel):
+    operator_id: str
+    password: str
+
+@app.post("/api/login")
+def login(req: LoginRequest):
+    """Zero-Trust JSON Login for SOC Dashboard."""
+    result = auth_engine.authenticate(req.operator_id, req.password)
+    return JSONResponse(content=result)
+
+@app.get("/api/verify")
+def verify_session(req: Request):
+    """Token verification for session persistence."""
+    auth_header = req.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"error": "Missing token"})
+    try:
+        auth_engine.decode_token(auth_header.split(" ")[1])
+        return {"ok": True}
+    except Exception:
+        return JSONResponse(status_code=401, content={"error": "Token expired"})
 
 
 @app.get("/video/{camera_id}")

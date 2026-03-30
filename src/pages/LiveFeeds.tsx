@@ -120,12 +120,12 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [aRes, sRes] = await Promise.all([
+        const [alertsRes, statsRes] = await Promise.all([
           fetch('http://127.0.0.1:8001/api/alerts'),
           fetch('http://127.0.0.1:8001/api/stats'),
         ]);
-        if (aRes.ok) setAlerts(await aRes.json());
-        if (sRes.ok) setStats(await sRes.json());
+        if (alertsRes.ok) setAlerts(await alertsRes.json());
+        if (statsRes.ok) setStats(await statsRes.json());
         setBackendOk(true);
       } catch {
         setBackendOk(false);
