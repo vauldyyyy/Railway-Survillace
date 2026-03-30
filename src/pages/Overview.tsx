@@ -3,6 +3,7 @@ import { Header } from '../components/Header';
 import { Video, AlertTriangle, UserSearch, Users, Shield, MapPin, Bell, User, Cpu, Zap, Lock } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import useSystemStore from '../store/useSystemStore';
+import useAlertStore from '../store/useAlertStore';
 
 const crowdData = [
   { time: '12:00', history: 120 },
@@ -17,6 +18,7 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
   const modelMetrics = useSystemStore(state => state.modelMetrics);
   const threatLevel = useSystemStore(state => state.threatLevel);
   const threatScore = useSystemStore(state => state.threatScore);
+  const alerts = useAlertStore(state => state.alerts) || [];
   
   const pipelineModels = [
     { key: 'coco', name: 'YOLO-World', desc: 'Zero-Shot Vision', color: 'cyan', icon: <Cpu size={14} /> },
@@ -191,43 +193,69 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
           {/* Live Threat Feed */}
           <div className="col-span-2 space-y-4">
             <div className="flex justify-between items-end border-b border-slate-800 pb-2">
-              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">LIVE THREAT FEED</h3>
-              <div className="flex gap-4 text-xs text-slate-400 font-mono">
+              <div className="flex flex-col">
+                <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">LIVE THREAT FEED</h3>
+                <div className="flex items-center gap-2 mt-2">
+                  <input 
+                    type="text" 
+                    placeholder="Enter YouTube URL or File Path..." 
+                    className="bg-slate-900 border border-slate-800 text-[10px] text-slate-300 px-3 py-1 w-64 rounded focus:outline-none focus:border-cyan-500/50 font-mono"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const val = e.currentTarget.value;
+                        if (val) useSystemStore.getState().setVideoSource(val);
+                      }
+                    }}
+                  />
+                  <button 
+                    onClick={() => {
+                      const input = document.querySelector('input[placeholder="Enter YouTube URL or File Path..."]') as HTMLInputElement;
+                      if (input?.value) useSystemStore.getState().setVideoSource(input.value);
+                    }}
+                    className="bg-cyan-500/10 border border-cyan-500/30 text-[10px] text-cyan-400 px-3 py-1 rounded hover:bg-cyan-500/20 transition-colors font-mono font-bold"
+                  >
+                    SWITCH SOURCE
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-4 text-xs text-slate-400 font-mono mb-1">
                 <span className="text-slate-200 bg-slate-800 px-2 py-1 rounded cursor-pointer">GRID VIEW</span>
                 <span className="px-2 py-1 cursor-pointer hover:text-slate-200 transition-colors">ANALYTICS</span>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               
-              {/* CAM 1: LOCAL WEBCAM (FASTAPI) */}
+              {/* CAM 1: PERSON ON TRACK */}
               <CameraFeed 
-                id="CAM_01_SOUTH" 
-                time="24.01.26 14:42:01" 
-                threat="SCANNING..." 
+                id="CAM_01 — PERSON ON TRACK" 
+                time={new Date().toLocaleTimeString()} 
+                threat="MONITORING" 
                 confidence={globalConfidence} 
-                image="http://localhost:8000/video/cam1"
+                image="http://localhost:8001/video/cam1"
               />
               
-              {/* CAM 4: YOUTUBE LIVE STREAM (FASTAPI) */}
+              {/* CAM 2: CROWD & STAMPEDE */}
               <CameraFeed 
-                id="CAM_04_NORTH" 
-                time="24.01.26 14:42:02" 
+                id="CAM_02 — CROWD & STAMPEDE" 
+                time={new Date().toLocaleTimeString()} 
                 status="LIVE" 
-                image="http://localhost:8000/video/cam4" 
+                image="http://localhost:8001/video/cam2" 
               />
               
+              {/* CAM 3: FIRE & SMOKE */}
               <CameraFeed 
-                id="CAM_09_ENTRANCE" 
-                time="24.01.26 14:42:02" 
-                image="https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=800"
-                dark
+                id="CAM_03 — FIRE & SMOKE" 
+                time={new Date().toLocaleTimeString()} 
+                status="LIVE" 
+                image="http://localhost:8001/video/cam3"
               />
+              
+              {/* CAM 4: UNATTENDED BAGGAGE */}
               <CameraFeed 
-                id="CAM_12_TRACKS" 
-                time="24.01.26 14:42:03" 
-                status="ENCODING STREAM..." 
-                image="https://images.unsplash.com/photo-1584432810601-6c7f27d2362b?auto=format&fit=crop&q=80&w=800"
-                dark
+                id="CAM_04 — UNATTENDED BAGGAGE" 
+                time={new Date().toLocaleTimeString()} 
+                status="LIVE" 
+                image="http://localhost:8001/video/cam4"
               />
             </div>
             
@@ -268,26 +296,22 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
                 <span className="text-[10px] text-red-400 font-mono">3 EVENTS PENDING</span>
               </div>
               <div className="space-y-3">
-                <AlertItem 
-                  type="CRITICAL THREAT" 
-                  time="14:40:12" 
-                  desc="Unattended Package — Platform 2 North" 
-                  actions={['DISPATCH', 'IGNORE']}
-                  critical
-                />
-                <AlertItem 
-                  type="CROWD WARNING" 
-                  time="14:38:55" 
-                  desc="Density Threshold Exceeded — Gate 4B" 
-                  actions={['MONITOR']}
-                  warning
-                />
-                <AlertItem 
-                  type="SYSTEM INFO" 
-                  time="14:35:00" 
-                  desc="Routine scan of Express 12455 completed" 
-                  info
-                />
+                {alerts.slice(0, 4).map(a => (
+                  <AlertItem 
+                    key={a.id}
+                    type={a.threat_type} 
+                    time={new Date(a.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})} 
+                    desc={`${a.camera_id} — ${a.command}`} 
+                    actions={a.threat_level === 'CRITICAL' ? ['STOP TRAIN', 'DISPATCH'] : ['NOTIFY AUTHORITY']}
+                    critical={a.threat_level === 'CRITICAL'}
+                    warning={a.threat_level === 'HIGH'}
+                    info={a.threat_level === 'MEDIUM' || a.threat_level === 'LOW'}
+                    metadata={a}
+                  />
+                ))}
+                {alerts.length === 0 && (
+                  <div className="text-slate-500 text-xs font-mono text-center py-4">NO ACTIVE THREATS</div>
+                )}
               </div>
             </div>
 
@@ -400,24 +424,34 @@ function CameraFeed({ id, time, threat, status, confidence, image, dark }: any) 
   );
 }
 
-function AlertItem({ type, time, desc, actions, critical, warning, info }: any) {
+function AlertItem({ type, time, desc, actions, critical, warning, info, metadata }: any) {
   return (
     <div className={`border-l-2 p-4 bg-[#05080F] ${critical ? 'border-red-500' : warning ? 'border-yellow-500' : 'border-slate-600'}`}>
       <div className="flex justify-between items-start mb-2">
         <span className={`text-[10px] font-bold tracking-wider ${critical ? 'text-red-400' : warning ? 'text-yellow-400' : 'text-slate-400'}`}>{type}</span>
         <span className="text-[10px] text-slate-500 font-mono">{time}</span>
       </div>
-      <p className="text-sm text-slate-200 mb-4">{desc}</p>
+      <p className="text-sm text-slate-200 mb-2 font-bold">{desc}</p>
+      
+      {metadata?.notify && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {metadata.notify.map((n: string) => (
+            <span key={n} className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">NOTIFY: {n}</span>
+          ))}
+          {metadata.escalation?.map((e: string) => (
+            <span key={e} className="text-[9px] bg-red-900/20 text-red-400 px-1.5 py-0.5 rounded border border-red-500/30">ESCALATE: {e}</span>
+          ))}
+        </div>
+      )}
+
       {actions && (
         <div className="flex gap-2">
           {actions.map((action: string, i: number) => (
             <button 
               key={i}
               className={`text-[10px] px-4 py-1.5 font-mono tracking-wider transition-colors ${
-                action === 'DISPATCH' 
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30' 
-                  : action === 'MONITOR'
-                  ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 border border-yellow-500/30'
+                action.includes('STOP') || action === 'DISPATCH'
+                  ? 'bg-red-500 text-white hover:bg-red-600 border border-red-500' 
                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700'
               }`}
             >

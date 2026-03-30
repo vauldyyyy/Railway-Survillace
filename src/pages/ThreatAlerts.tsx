@@ -1,55 +1,31 @@
 import React, { useState, useMemo } from 'react';
 import { Header } from '../components/Header';
 import { AlertTriangle, ShieldAlert, Crosshair, CheckCircle, Search, Filter, ChevronDown } from 'lucide-react';
-
-const THREATS = [
-  {
-    id: "INC-9921",
-    type: "UNATTENDED BAGGAGE",
-    location: "Platform 2 North, Pillar 4",
-    time: "14:40:12 UTC (4 mins ago)",
-    level: "CRITICAL",
-    image: "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=400",
-    description: "A black duffel bag has been left unattended for > 5 minutes. AI behavioral analysis indicates the owner (TRK-0042) boarded Train 12455 without the bag."
-  },
-  {
-    id: "INC-9920",
-    type: "UNAUTHORIZED ACCESS",
-    location: "Maintenance Tunnel B",
-    time: "14:22:05 UTC (22 mins ago)",
-    level: "HIGH",
-    image: "https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&q=80&w=400",
-    description: "Thermal camera CAM-07 detected human heat signature in restricted zone. No staff RFID badge detected in proximity."
-  },
-  {
-    id: "INC-9919",
-    type: "SUSPICIOUS LOITERING",
-    location: "Main Concourse, Exit C",
-    time: "13:15:44 UTC (1 hr ago)",
-    level: "MEDIUM",
-    image: "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&q=80&w=400",
-    description: "Individual matching profile TRK-0018 observed pacing near Exit C for over 45 minutes without boarding or interacting with services."
-  }
-];
+import useAlertStore from '../store/useAlertStore';
 
 export function ThreatAlerts({ onNavigate }: { onNavigate?: (page: any) => void }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [levelFilter, setLevelFilter] = useState('ALL');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const alerts = useAlertStore(state => state.alerts);
 
   const filteredThreats = useMemo(() => {
-    return THREATS.filter(threat => {
+    return alerts.filter(threat => {
       const matchesSearch = 
-        threat.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        threat.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        threat.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        threat.description.toLowerCase().includes(searchQuery.toLowerCase());
+        threat.threat_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        threat.camera_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        threat.command.toLowerCase().includes(searchQuery.toLowerCase());
       
-      const matchesFilter = levelFilter === 'ALL' || threat.level === levelFilter;
+      const level = String(threat.threat_level).toUpperCase();
+      const matchesFilter = levelFilter === 'ALL' || level === levelFilter;
       
       return matchesSearch && matchesFilter;
     });
-  }, [searchQuery, levelFilter]);
+  }, [alerts, searchQuery, levelFilter]);
+
+  const criticalCount = alerts.filter(a => a.threat_level === 'CRITICAL').length;
+  const warningCount = alerts.filter(a => a.threat_level === 'HIGH').length;
+  const infoCount = alerts.filter(a => a.threat_level === 'LOW' || a.threat_level === 'MEDIUM').length;
 
   return (
     <div className="flex flex-col h-full">
@@ -99,7 +75,7 @@ export function ThreatAlerts({ onNavigate }: { onNavigate?: (page: any) => void 
               <AlertTriangle size={24} />
             </div>
             <div>
-              <div className="text-2xl font-light text-red-400">03</div>
+              <div className="text-2xl font-light text-red-400">{String(criticalCount).padStart(2, '0')}</div>
               <div className="text-xs text-slate-400 uppercase tracking-wider">Critical Threats</div>
             </div>
           </div>
@@ -108,7 +84,7 @@ export function ThreatAlerts({ onNavigate }: { onNavigate?: (page: any) => void 
               <ShieldAlert size={24} />
             </div>
             <div>
-              <div className="text-2xl font-light text-yellow-400">12</div>
+              <div className="text-2xl font-light text-yellow-400">{String(warningCount).padStart(2, '0')}</div>
               <div className="text-xs text-slate-400 uppercase tracking-wider">Warnings</div>
             </div>
           </div>
@@ -117,8 +93,8 @@ export function ThreatAlerts({ onNavigate }: { onNavigate?: (page: any) => void 
               <CheckCircle size={24} />
             </div>
             <div>
-              <div className="text-2xl font-light text-emerald-400">45</div>
-              <div className="text-xs text-slate-400 uppercase tracking-wider">Resolved Today</div>
+              <div className="text-2xl font-light text-emerald-400">{String(infoCount).padStart(2, '0')}</div>
+              <div className="text-xs text-slate-400 uppercase tracking-wider">Information</div>
             </div>
           </div>
         </div>
@@ -139,38 +115,39 @@ export function ThreatAlerts({ onNavigate }: { onNavigate?: (page: any) => void 
   );
 }
 
-function ThreatCard({ id, type, location, time, level, image, description }: any) {
+function ThreatCard({ id, threat_type, camera_id, timestamp, threat_level, command, confidence }: any) {
+  const timeStr = new Date(timestamp).toLocaleTimeString();
+  const level = String(threat_level).toUpperCase();
+  const image = "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=400"; // Placeholder
+ 
   return (
-    <div className="bg-[#151C2C] border border-red-500/30 rounded-lg overflow-hidden flex">
+    <div className={`bg-[#151C2C] border ${threat_level === 'CRITICAL' ? 'border-red-500/30' : 'border-slate-800'} rounded-lg overflow-hidden flex`}>
       <div className="w-64 shrink-0 relative bg-slate-900">
-        <img src={image} alt={type} className="w-full h-full object-cover opacity-80" />
-        <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded">
+        <img src={image} alt={threat_type} className="w-full h-full object-cover opacity-80" />
+        <div className={`absolute top-2 left-2 ${threat_level === 'CRITICAL' ? 'bg-red-500' : 'bg-amber-500'} text-white text-[10px] font-bold px-2 py-1 rounded`}>
           {level}
         </div>
       </div>
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex justify-between items-start mb-2">
           <div>
-            <div className="text-xs text-slate-500 font-mono mb-1">{id} • {time}</div>
-            <h4 className="text-lg font-bold text-slate-200">{type}</h4>
+            <div className="text-xs text-slate-500 font-mono mb-1">{id} • {timeStr}</div>
+            <h4 className="text-lg font-bold text-slate-200">{threat_type}</h4>
             <div className="text-sm text-cyan-400 flex items-center gap-1 mt-1">
-              <Crosshair size={14} /> {location}
+              <Crosshair size={14} /> {camera_id} — {command}
             </div>
           </div>
-          <button className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-4 py-2 rounded text-xs font-bold tracking-wider transition-colors">
+          <button className="bg-red-500 text-white border border-red-500 px-4 py-2 rounded text-xs font-bold tracking-wider hover:bg-red-600 transition-colors">
             DISPATCH TEAM
           </button>
         </div>
-        <p className="text-sm text-slate-400 mt-2 flex-1">{description}</p>
+        <div className="flex gap-2 mt-4 text-[10px] font-mono text-slate-500 italic">
+            <span>Model: TICE Engine V3</span>
+            <span>• Conf: {Math.round((confidence || 0) * 100)}%</span>
+        </div>
         <div className="flex gap-2 mt-4">
           <button className="text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded border border-slate-700 transition-colors">
-            View Camera Feed
-          </button>
-          <button className="text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded border border-slate-700 transition-colors">
-            Track Suspect
-          </button>
-          <button className="text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded border border-slate-700 transition-colors ml-auto">
-            Mark False Alarm
+            View Analytics
           </button>
         </div>
       </div>

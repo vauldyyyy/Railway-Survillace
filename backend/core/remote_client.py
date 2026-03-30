@@ -20,7 +20,7 @@ except ImportError:
 class RemoteInferenceClient:
     """
     HTTP client that sends frames to the Colab GPU bridge for inference.
-    Provides automatic health checking, latency tracking, and graceful fallback.
+    Self-heals automatically by polling for the bridge at high frequency when offline.
     """
 
     def __init__(self):
@@ -29,26 +29,27 @@ class RemoteInferenceClient:
         self.is_connected = False
         self.latency_ms = 0.0
         self.last_health_check = 0
-        self.health_check_interval = 10  # seconds
         self._consecutive_failures = 0
-        self._max_failures = 3  # fallback after 3 consecutive failures
         self._lock = threading.Lock()
 
         if self.mode == "remote" and self.remote_url and _REQUESTS_AVAILABLE:
-            print(f"[RemoteClient] Configured for REMOTE inference: {self.remote_url}")
+            print(f"[RemoteClient] Mode set to REMOTE. Target: {self.remote_url}")
+            # Immediate check at startup
+            self._check_health()
             self._start_health_monitor()
         else:
-            if self.mode == "remote" and not self.remote_url:
-                print("[RemoteClient] REMOTE mode set but no REMOTE_INFERENCE_URL configured. Using local.")
-            print("[RemoteClient] Running in LOCAL inference mode.")
+            print("[RemoteClient] Mode set to LOCAL. Bridge disabled.")
             self.mode = "local"
 
     def _start_health_monitor(self):
-        """Background thread that periodically pings the remote bridge."""
+        """Background thread that periodically pings the remote bridge with adaptive frequency."""
         def _monitor():
             while True:
-                self._check_health()
-                time.sleep(self.health_check_interval)
+                connected = self._check_health()
+                # Poll faster (2s) if we aren't connected yet to catch the bridge ASAP
+                # Poll slower (10s) if we are stable to save bandwidth
+                interval = 2 if not connected else 10
+                time.sleep(interval)
 
         t = threading.Thread(target=_monitor, daemon=True)
         t.start()
@@ -56,25 +57,31 @@ class RemoteInferenceClient:
     def _check_health(self):
         """Ping the /health endpoint of the remote bridge."""
         if not self.remote_url or not _REQUESTS_AVAILABLE:
-            return
+            return False
 
         try:
             start = time.time()
-            resp = requests.get(f"{self.remote_url}/health", timeout=5)
+            # Bypassing SSL for Hackathon WiFi security blocks
+            resp = requests.get(f"{self.remote_url}/health", timeout=10, verify=False)
             elapsed = (time.time() - start) * 1000
 
             if resp.status_code == 200:
-                data = resp.json()
                 with self._lock:
+                    if not self.is_connected:
+                        print(f" [OK] GPU Bridge Connected! ({self.remote_url})")
                     self.is_connected = True
                     self.latency_ms = round(elapsed, 1)
                     self._consecutive_failures = 0
                     self.last_health_check = time.time()
                 return True
         except Exception as e:
+            if self.is_connected:
+                print(f" [!!] GPU Health Check Error: {e}")
             pass
 
         with self._lock:
+            if self.is_connected:
+                print(" [!!] GPU Bridge Disconnected. Retrying in background...")
             self.is_connected = False
             self.latency_ms = 0.0
         return False
@@ -82,23 +89,22 @@ class RemoteInferenceClient:
     def detect_remote(self, frame, condition="normal"):
         """
         Send a frame to the remote GPU bridge for inference.
-        Returns a list of detection dicts compatible with the local pipeline format,
-        or None if the remote bridge is unavailable (signaling local fallback).
+        Returns a list of detection dicts or None if currently disconnected.
         """
         if self.mode != "remote" or not self.is_connected or not _REQUESTS_AVAILABLE:
             return None
 
         try:
-            # Encode frame as JPEG for efficient transfer
             _, jpg_buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
             jpg_bytes = jpg_buf.tobytes()
 
             start = time.time()
             resp = requests.post(
                 f"{self.remote_url}/detect",
-                files={"file": ("frame.jpg", jpg_bytes, "image/jpeg")},
+                files={"image": ("frame.jpg", jpg_bytes, "image/jpeg")},
                 data={"condition": condition},
-                timeout=10,
+                timeout=5,
+                verify=False
             )
             elapsed = (time.time() - start) * 1000
 
@@ -106,27 +112,21 @@ class RemoteInferenceClient:
                 data = resp.json()
                 with self._lock:
                     self.latency_ms = round(elapsed, 1)
-                    self._consecutive_failures = 0
                 return data.get("detections", [])
             else:
                 self._handle_failure()
                 return None
 
-        except requests.exceptions.Timeout:
-            print("[RemoteClient] Request timed out, falling back to local.")
-            self._handle_failure()
-            return None
-        except Exception as e:
-            print(f"[RemoteClient] Error: {e}")
+        except Exception:
             self._handle_failure()
             return None
 
     def _handle_failure(self):
-        """Track consecutive failures and disable remote if threshold exceeded."""
+        """Track failures and ensure is_connected is false so background polling resumes."""
         with self._lock:
             self._consecutive_failures += 1
-            if self._consecutive_failures >= self._max_failures:
-                print(f"[RemoteClient] {self._max_failures} consecutive failures. Falling back to LOCAL.")
+            if self.is_connected:
+                print(f"[RemoteClient] Connection lost (Failure #{self._consecutive_failures}). Searching for bridge...")
                 self.is_connected = False
 
     def get_status(self):
@@ -138,7 +138,6 @@ class RemoteInferenceClient:
                 "latency_ms": self.latency_ms,
                 "remote_url": self.remote_url if self.mode == "remote" else None,
             }
-
 
 # Global singleton
 remote_client = RemoteInferenceClient()

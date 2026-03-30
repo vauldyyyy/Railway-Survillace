@@ -44,7 +44,7 @@ function getCamNode(cam: string, index: number) {
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
-const API = 'http://localhost:8000';
+const API = 'http://localhost:8001';
 
 async function fetchTracklets(): Promise<Tracklet[]> {
   const res = await fetch(`${API}/api/tracklets`);

@@ -81,6 +81,8 @@ interface SystemState {
   setEdgeNodes: (nodes: EdgeNodeHealth[]) => void;
   setWsConnected: (connected: boolean) => void;
   updateBridgeStatus: (status: { mode: string; connected: boolean; latency_ms: number; inference_source: string }) => void;
+  toggleGpuBridge: () => Promise<void>;
+  setVideoSource: (url: string) => Promise<boolean>;
   login: () => Promise<boolean>;
   connectWebSocket: () => void;
 }
@@ -99,20 +101,20 @@ const defaultModel = (name: string, fps: number, gpu: number): ModelMetrics => (
 });
 
 const defaultCameras: Record<string, CameraState> = {
-  'CAM_01': { id: 'CAM_01', label: 'Platform 1 South', status: 'online', last_frame_ts: Date.now(), person_count: 42, stream_url: 'http://127.0.0.1:8000/stream/cam1' },
-  'CAM_02': { id: 'CAM_02', label: 'Platform 1 North', status: 'online', last_frame_ts: Date.now(), person_count: 38, stream_url: 'http://127.0.0.1:8000/stream/cam2' },
-  'CAM_03': { id: 'CAM_03', label: 'Platform 2 Central', status: 'online', last_frame_ts: Date.now(), person_count: 55, stream_url: 'http://127.0.0.1:8000/stream/cam3' },
-  'CAM_04': { id: 'CAM_04', label: 'Entry Gate A', status: 'online', last_frame_ts: Date.now(), person_count: 21, stream_url: 'http://127.0.0.1:8000/stream/cam4' },
-  'CAM_05': { id: 'CAM_05', label: 'Footbridge', status: 'online', last_frame_ts: Date.now(), person_count: 15, stream_url: 'http://127.0.0.1:8000/stream/cam5' },
-  'CAM_06': { id: 'CAM_06', label: 'Track Section A', status: 'online', last_frame_ts: Date.now(), person_count: 3, stream_url: 'http://127.0.0.1:8000/stream/cam6' },
-  'CAM_07': { id: 'CAM_07', label: 'Waiting Area', status: 'online', last_frame_ts: Date.now(), person_count: 67, stream_url: 'http://127.0.0.1:8000/stream/cam7' },
-  'CAM_08': { id: 'CAM_08', label: 'Ticket Counter', status: 'online', last_frame_ts: Date.now(), person_count: 28, stream_url: 'http://127.0.0.1:8000/stream/cam8' },
-  'CAM_09': { id: 'CAM_09', label: 'Entrance Hall', status: 'online', last_frame_ts: Date.now(), person_count: 34, stream_url: 'http://127.0.0.1:8000/stream/cam9' },
-  'CAM_10': { id: 'CAM_10', label: 'Platform 3 East', status: 'online', last_frame_ts: Date.now(), person_count: 19, stream_url: 'http://127.0.0.1:8000/stream/cam10' },
-  'CAM_11': { id: 'CAM_11', label: 'Platform 3 West', status: 'online', last_frame_ts: Date.now(), person_count: 22, stream_url: 'http://127.0.0.1:8000/stream/cam11' },
-  'CAM_12': { id: 'CAM_12', label: 'Track Section B', status: 'online', last_frame_ts: Date.now(), person_count: 1, stream_url: 'http://127.0.0.1:8000/stream/cam12' },
+  'CAM_01': { id: 'CAM_01', label: 'Platform 1 South', status: 'online', last_frame_ts: Date.now(), person_count: 42, stream_url: 'http://127.0.0.1:8001/stream/cam1' },
+  'CAM_02': { id: 'CAM_02', label: 'Platform 1 North', status: 'online', last_frame_ts: Date.now(), person_count: 38, stream_url: 'http://127.0.0.1:8001/stream/cam2' },
+  'CAM_03': { id: 'CAM_03', label: 'Platform 2 Central', status: 'online', last_frame_ts: Date.now(), person_count: 55, stream_url: 'http://127.0.0.1:8001/stream/cam3' },
+  'CAM_04': { id: 'CAM_04', label: 'Entry Gate A', status: 'online', last_frame_ts: Date.now(), person_count: 21, stream_url: 'http://127.0.0.1:8001/stream/cam4' },
+  'CAM_05': { id: 'CAM_05', label: 'Footbridge', status: 'online', last_frame_ts: Date.now(), person_count: 15, stream_url: 'http://127.0.0.1:8001/stream/cam5' },
+  'CAM_06': { id: 'CAM_06', label: 'Track Section A', status: 'online', last_frame_ts: Date.now(), person_count: 3, stream_url: 'http://127.0.0.1:8001/stream/cam6' },
+  'CAM_07': { id: 'CAM_07', label: 'Waiting Area', status: 'online', last_frame_ts: Date.now(), person_count: 67, stream_url: 'http://127.0.0.1:8001/stream/cam7' },
+  'CAM_08': { id: 'CAM_08', label: 'Ticket Counter', status: 'online', last_frame_ts: Date.now(), person_count: 28, stream_url: 'http://127.0.0.1:8001/stream/cam8' },
+  'CAM_09': { id: 'CAM_09', label: 'Entrance Hall', status: 'online', last_frame_ts: Date.now(), person_count: 34, stream_url: 'http://127.0.0.1:8001/stream/cam9' },
+  'CAM_10': { id: 'CAM_10', label: 'Platform 3 East', status: 'online', last_frame_ts: Date.now(), person_count: 19, stream_url: 'http://127.0.0.1:8001/stream/cam10' },
+  'CAM_11': { id: 'CAM_11', label: 'Platform 3 West', status: 'online', last_frame_ts: Date.now(), person_count: 22, stream_url: 'http://127.0.0.1:8001/stream/cam11' },
+  'CAM_12': { id: 'CAM_12', label: 'Track Section B', status: 'online', last_frame_ts: Date.now(), person_count: 1, stream_url: 'http://127.0.0.1:8001/stream/cam12' },
   'CAM_13': { id: 'CAM_13', label: 'Parking Area', status: 'offline', last_frame_ts: Date.now() - 600000, person_count: 0, stream_url: '' },
-  'CAM_14': { id: 'CAM_14', label: 'VIP Lounge', status: 'online', last_frame_ts: Date.now(), person_count: 5, stream_url: 'http://127.0.0.1:8000/stream/cam14' },
+  'CAM_14': { id: 'CAM_14', label: 'VIP Lounge', status: 'online', last_frame_ts: Date.now(), person_count: 5, stream_url: 'http://127.0.0.1:8001/stream/cam14' },
 };
 
 const defaultEdgeNodes: EdgeNodeHealth[] = [
@@ -183,12 +185,41 @@ const useSystemStore = create<SystemState>((set, get) => ({
     },
   }),
 
+  toggleGpuBridge: async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8001/api/bridge/toggle', { method: 'POST' });
+      if (res.ok) {
+        // Fetch new status instantly
+        const statusRes = await fetch('http://127.0.0.1:8001/api/bridge-status');
+        if (statusRes.ok) {
+           useSystemStore.getState().updateBridgeStatus(await statusRes.json());
+        }
+      }
+    } catch(e) {
+      console.error('Failed to toggle GPU bridge', e);
+    }
+  },
+
+  setVideoSource: async (url) => {
+    try {
+      const res = await fetch('http://127.0.0.1:8001/api/stream/source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camera_id: 'cam1', source: url }), // Explicitly target cam1
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to update video source', e);
+      return false;
+    }
+  },
+
   login: async () => {
     try {
       const formData = new URLSearchParams();
       formData.append('username', 'admin');
       formData.append('password', 'railguard');
-      const res = await fetch('http://127.0.0.1:8000/api/auth/token', {
+      const res = await fetch('http://127.0.0.1:8001/api/auth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
@@ -216,7 +247,7 @@ const useSystemStore = create<SystemState>((set, get) => ({
       token = get().jwtToken;
     }
 
-    const wsBase = 'ws://127.0.0.1:8000';
+    const wsBase = 'ws://127.0.0.1:8001';
     const ws = new WebSocket(`${wsBase}/ws/alerts?token=${token}`);
 
     ws.onopen = () => {
@@ -253,23 +284,25 @@ const useSystemStore = create<SystemState>((set, get) => ({
           case 'alert':
             if (msg.payload) {
               const p = msg.payload;
+              // Use backend-generated ID for dedup (cooldown already applied server-side)
               useAlertStore.getState().addAlert({
-                id: `WS-${p.uuid || Date.now()}`,
+                id: p.id || `WS-${p.uuid || Date.now()}`,
                 type: p.type || 'UNKNOWN',
                 severity: (p.severity as any) || 'info',
-                camera: p.camera || 'CAM_01',
-                location: 'Station Perimeter',
-                timestamp: (p.ts * 1000) || Date.now(),
-                aiConfidence: Math.round((p.confidence || 0.8) * 100),
+                camera: p.camera || 'unknown',
+                location: p.location || 'Railway Perimeter',
+                timestamp: p.timestamp ? p.timestamp * 1000 : Date.now(),
+                aiConfidence: Math.round((p.confidence || 0) * 100),
                 acknowledged: false,
+                description: p.description || undefined,
                 transparency: {
-                  model_used: 'YOLO-World Hardened V2',
-                  confidence: p.confidence || 0.8,
-                  reasoning: p.type === 'PERSON ON TRACK' ? ['Intrusion detected in restricted track zone'] : ['Anomaly detected'],
-                  track_id_history: [p.uuid],
-                  time_to_detection_ms: 42,
+                  model_used: 'YOLO-World V3',
+                  confidence: p.confidence || 0,
+                  reasoning: [p.description || `${p.type} detected by AI pipeline`],
+                  track_id_history: p.uuid ? [p.uuid] : [],
+                  time_to_detection_ms: 0,
                   bbox: p.box,
-                }
+                },
               });
             }
             break;
@@ -294,7 +327,7 @@ const useSystemStore = create<SystemState>((set, get) => ({
 export function startMetricsSimulation() {
   return setInterval(async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/stats');
+      const res = await fetch('http://127.0.0.1:8001/api/stats');
       if (res.ok) {
         const data = await res.json();
         const store = useSystemStore.getState();
@@ -325,7 +358,7 @@ export function startMetricsSimulation() {
 export function startBridgePoller() {
   return setInterval(async () => {
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/bridge-status');
+      const res = await fetch('http://127.0.0.1:8001/api/bridge-status');
       if (res.ok) {
         const data = await res.json();
         useSystemStore.getState().updateBridgeStatus(data);

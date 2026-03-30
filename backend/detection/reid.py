@@ -74,8 +74,9 @@ class ReIDTracker:
         x1, y1 = max(0, x1), max(0, y1)
         x2, y2 = min(w, x2), min(h, y2)
         
-        # Reject fragments or impossibly thin occlusion crops
-        if x2 - x1 < 16 or y2 - y1 < 48:
+        # Reject absolute spatial noise (area < 400px, e.g., 20x20)
+        # We NO LONGER filter by raw height/width to protect fallen humans (wide but short)
+        if (x2 - x1) * (y2 - y1) < 400:
             return None, []
             
         person_crop = frame[y1:y2, x1:x2]

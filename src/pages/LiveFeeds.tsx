@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Header } from '../components/Header';
 import {
   Maximize2, X, AlertTriangle, ShieldAlert, Flame,
-  Users, Package, Train, Camera, Wifi, WifiOff
+  Users, Package, Train, Camera, Wifi,
+  Link as LinkIcon, Save, Edit3, Plus
 } from 'lucide-react';
 import useSystemStore from '../store/useSystemStore';
 
@@ -17,12 +18,12 @@ interface CamDef {
   featureIcons: React.ReactNode[];
 }
 
-const CAMERAS: CamDef[] = [
+const INITIAL_CAMERAS: CamDef[] = [
   {
     id: 'cam1',
-    label: 'CAM-01',
-    location: 'Our Camera',
-    streamUrl: 'http://localhost:8000/video/cam1',
+    label: 'CAM-01_PLATFORM',
+    location: 'Crowd Stress Test',
+    streamUrl: 'http://localhost:8001/video/cam1',
     features: ['Baggage', 'Track', 'Crowd', 'Fire', 'Re-ID'],
     featureIcons: [
       <Package size={10} key="b" />,
@@ -34,17 +35,17 @@ const CAMERAS: CamDef[] = [
   },
   {
     id: 'cam2',
-    label: 'CAM-02',
-    location: 'Track View',
-    streamUrl: 'http://localhost:8000/video/cam2',
+    label: 'CAM-02_NIGHT',
+    location: 'Low Light / Rain',
+    streamUrl: 'http://localhost:8001/video/cam2',
     features: ['Track', 'Re-ID'],
     featureIcons: [<Train size={10} key="t" />, <Camera size={10} key="r" />],
   },
   {
     id: 'cam3',
-    label: 'CAM-03',
-    location: 'Platform View',
-    streamUrl: 'http://localhost:8000/video/cam3',
+    label: 'CAM-03_SMOKE',
+    location: 'Industrial Zone',
+    streamUrl: 'http://localhost:8001/video/cam3',
     features: ['Baggage', 'Crowd', 'Re-ID'],
     featureIcons: [
       <Package size={10} key="b" />,
@@ -54,9 +55,9 @@ const CAMERAS: CamDef[] = [
   },
   {
     id: 'cam4',
-    label: 'CAM-04',
-    location: 'Entry View',
-    streamUrl: 'http://localhost:8000/video/cam4',
+    label: 'CAM-04_BAGGAGE',
+    location: 'Terminal Concourse',
+    streamUrl: 'http://localhost:8001/video/cam4',
     features: ['Re-ID'],
     featureIcons: [<Camera size={10} key="r" />],
   },
@@ -64,7 +65,7 @@ const CAMERAS: CamDef[] = [
     id: 'cam5',
     label: 'CAM-05',
     location: 'Exit View',
-    streamUrl: 'http://localhost:8000/video/cam5',
+    streamUrl: 'http://localhost:8001/video/cam5',
     features: ['Re-ID'],
     featureIcons: [<Camera size={10} key="r" />],
   },
@@ -72,7 +73,7 @@ const CAMERAS: CamDef[] = [
     id: 'cam6',
     label: 'CAM-06',
     location: 'Edge Camera',
-    streamUrl: 'http://localhost:8000/video/cam6',
+    streamUrl: 'http://localhost:8001/video/cam6',
     features: ['Baggage', 'Crowd', 'Re-ID'],
     featureIcons: [
       <Package size={10} key="b" />,
@@ -108,6 +109,7 @@ interface AlertEntry {
 // ─── Main Component ────────────────────────────────────────────────────────
 
 export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) {
+  const [cameras, setCameras] = useState<CamDef[]>(INITIAL_CAMERAS);
   const [zoomed, setZoomed] = useState<CamDef | null>(null);
   const [alerts, setAlerts] = useState<AlertEntry[]>([]);
   const [backendOk, setBackendOk] = useState(true);
@@ -119,8 +121,8 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
     const fetchData = async () => {
       try {
         const [aRes, sRes] = await Promise.all([
-          fetch('http://localhost:8000/api/alerts'),
-          fetch('http://localhost:8000/api/stats'),
+          fetch('http://127.0.0.1:8001/api/alerts'),
+          fetch('http://127.0.0.1:8001/api/stats'),
         ]);
         if (aRes.ok) setAlerts(await aRes.json());
         if (sRes.ok) setStats(await sRes.json());
@@ -134,14 +136,31 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
     return () => clearInterval(t);
   }, []);
 
-  const liveCams = CAMERAS.slice(0, 6);
-  const allCams = CAMERAS; // 9 slots for 3x3
+  const handleUpdateSource = async (cameraId: string, newSource: string) => {
+    try {
+      const res = await fetch('http://127.0.0.1:8001/api/stream/source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camera_id: cameraId, source: newSource }),
+      });
+      if (res.ok) {
+        // Update local state to show it's "Real" now
+        setCameras(prev => prev.map(c => 
+          c.id === cameraId 
+            ? { ...c, streamUrl: `http://127.0.0.1:8001/video/${cameraId}`, location: 'Custom Stream' } 
+            : c
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to update source", err);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
       <Header
         title="LIVE SURVEILLANCE FEEDS"
-        subtitle="Madgaon Junction — 6 Active Cameras | AI Analysis Running"
+        subtitle={`Madgaon Junction — ${stats.cameras_active} Active Cameras | AI Analysis Running`}
         onNavigate={onNavigate}
       >
         <div className={`flex items-center gap-2 text-[10px] font-mono px-3 py-1 rounded-full border ${
@@ -151,7 +170,7 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
         }`}>
           {backendOk
             ? <><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />AI ENGINE LIVE</>
-            : <><WifiOff size={10} /> BACKEND OFFLINE</>
+            : <><ShieldAlert size={10} /> BACKEND OFFLINE</>
           }
         </div>
       </Header>
@@ -181,7 +200,7 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
       {/* Stats row */}
       <div className="px-6 py-3 border-b border-slate-800 grid grid-cols-4 gap-4">
         {[
-          { label: 'CAMERAS ACTIVE', value: `${stats.cameras_active}/6`, color: 'text-cyan-400' },
+          { label: 'CAMERAS ACTIVE', value: `${stats.cameras_active}/9`, color: 'text-cyan-400' },
           { label: 'PERSONS TRACKED', value: stats.total_tracked, color: 'text-slate-200' },
           { label: 'FLAGGED', value: stats.flagged, color: stats.flagged > 0 ? 'text-red-400' : 'text-slate-400' },
           { label: 'RECENT ALERTS (5m)', value: stats.recent_alerts, color: stats.recent_alerts > 0 ? 'text-yellow-400' : 'text-slate-400' },
@@ -196,13 +215,14 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
       {/* 3×3 Camera Grid */}
       <div className="flex-1 p-6 overflow-auto">
         <div className="grid grid-cols-3 gap-4 h-full" style={{ gridAutoRows: '1fr' }}>
-          {allCams.map(cam => (
+          {cameras.map(cam => (
             <CameraCard
               key={cam.id}
               cam={cam}
               isReal={!!cam.streamUrl}
               onZoom={() => cam.streamUrl && setZoomed(cam)}
               confidence={globalConfidence}
+              onUpdateSource={(src) => handleUpdateSource(cam.id, src)}
             />
           ))}
         </div>
@@ -232,27 +252,67 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
 // ─── Camera Card ───────────────────────────────────────────────────────────
 
 function CameraCard({
-  cam, isReal, onZoom, confidence
-}: { cam: CamDef; isReal: boolean; onZoom: () => void; confidence?: number }) {
+  cam, isReal, onZoom, confidence, onUpdateSource
+}: { 
+  cam: CamDef; 
+  isReal: boolean; 
+  onZoom: () => void; 
+  confidence?: number;
+  onUpdateSource: (src: string) => void;
+}) {
   const imgRef = useRef<HTMLImageElement>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [errored, setErrored] = useState(false);
+  const [showInput, setShowInput] = useState(false);
+  const [newUrl, setNewUrl] = useState('');
 
-  // Reset error when cam changes
-  useEffect(() => { setErrored(false); setLoaded(false); }, [cam.id]);
+  // Reset when cam changes
+  useEffect(() => { setShowInput(false); setNewUrl(''); }, [cam.id]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newUrl.trim()) {
+      onUpdateSource(newUrl.trim());
+      setShowInput(false);
+      setNewUrl('');
+    }
+  };
 
   if (!isReal) {
     return (
-      <div className="bg-[#0B0F19] border border-slate-800 rounded-lg overflow-hidden flex flex-col">
+      <div className="bg-[#0B0F19] border border-slate-800 rounded-lg overflow-hidden flex flex-col group relative">
         <div className="px-3 py-2 border-b border-slate-800/50 flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-slate-700" />
           <span className="text-[10px] font-mono text-slate-600">{cam.label} • {cam.location}</span>
         </div>
-        <div className="flex-1 flex items-center justify-center bg-[#060a12]">
-          <div className="text-slate-700 font-mono text-xs text-center">
-            <Camera size={20} className="mx-auto mb-2 opacity-30" />
-            RESERVED SLOT
-          </div>
+        
+        <div className="flex-1 flex flex-col items-center justify-center bg-[#060a12] p-4">
+          {!showInput ? (
+            <button 
+              onClick={() => setShowInput(true)}
+              className="text-slate-500 font-mono text-xs text-center group-hover:text-cyan-400 transition-colors"
+            >
+              <Plus size={24} className="mx-auto mb-2 opacity-30 group-hover:opacity-100" />
+              ADD STREAM SOURCE
+            </button>
+          ) : (
+            <form onSubmit={handleSubmit} className="w-full space-y-2">
+              <input 
+                autoFocus
+                type="text"
+                placeholder="YouTube or Stream URL..."
+                className="w-full bg-[#0B0F19] border border-slate-700 rounded px-2 py-1.5 text-[10px] font-mono text-slate-200 outline-none focus:border-cyan-500/50"
+                value={newUrl}
+                onChange={e => setNewUrl(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <button type="submit" className="flex-1 bg-cyan-500/20 text-cyan-400 text-[9px] font-mono py-1 rounded border border-cyan-500/30 hover:bg-cyan-500/30">
+                  ACTIVATE
+                </button>
+                <button type="button" onClick={() => setShowInput(false)} className="px-2 py-1 text-slate-500 hover:text-white">
+                  <X size={12} />
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     );
@@ -260,69 +320,99 @@ function CameraCard({
 
   return (
     <div
-      className="bg-[#0B0F19] border border-slate-800 rounded-lg overflow-hidden flex flex-col group cursor-pointer hover:border-cyan-500/40 transition-colors relative"
-      onClick={onZoom}
+      className="bg-[#0B0F19] border border-slate-800 rounded-lg overflow-hidden flex flex-col group transition-colors relative"
     >
       {/* Card Header */}
       <div className="px-3 py-2 border-b border-slate-800/50 flex items-center gap-2 bg-[#0B0F19]/90 z-10">
         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
         <span className="text-[10px] font-mono text-cyan-400 font-semibold">{cam.label}</span>
-        <span className="text-[10px] font-mono text-slate-500">• {cam.location}</span>
-        <div className="ml-auto flex gap-1">
-          {cam.features.map((f, i) => (
-            <span
-              key={f}
-              className={`text-[8px] font-mono px-1.5 py-0.5 rounded border flex items-center gap-0.5 ${FEATURE_COLORS[f] ?? 'text-slate-400 border-slate-700'}`}
-              title={f}
-            >
-              {cam.featureIcons[i]}
-            </span>
-          ))}
+        <span className="text-[10px] font-mono text-slate-500 truncate max-w-[80px]">• {cam.location}</span>
+        
+        <div className="ml-auto flex items-center gap-2">
+           <button 
+            onClick={(e) => { e.stopPropagation(); setShowInput(!showInput); }}
+            className={`p-1 rounded hover:bg-slate-800 transition-colors ${showInput ? 'text-cyan-400' : 'text-slate-500'}`}
+            title="Update Stream Source"
+          >
+            <LinkIcon size={12} />
+          </button>
+          <div className="flex gap-1">
+            {cam.features.map((f, i) => (
+              <span
+                key={f}
+                className={`text-[8px] font-mono px-1.5 py-0.5 rounded border flex items-center gap-0.5 ${FEATURE_COLORS[f] ?? 'text-slate-400 border-slate-700'}`}
+                title={f}
+              >
+                {cam.featureIcons[i]}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Stream */}
-      <div className="flex-1 relative bg-[#060a12] overflow-hidden" style={{ minHeight: '160px' }}>
-        {!errored ? (
-          <>
-            {!loaded && (
-              <div className="absolute inset-0 flex items-center justify-center z-10">
-                <div className="text-slate-600 font-mono text-[10px] text-center">
-                  <div className="w-4 h-4 border border-cyan-500/40 border-t-cyan-400 rounded-full animate-spin mx-auto mb-1" />
-                  CONNECTING...
-                </div>
-              </div>
-            )}
-            <img
-              ref={imgRef}
-              src={cam.streamUrl}
-              alt={cam.label}
-              className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
-              onLoad={() => setLoaded(true)}
-              onError={() => setErrored(true)}
+      {/* URL Edit Overlay */}
+      {showInput && (
+        <div className="absolute inset-0 z-20 bg-[#0B0F19]/95 backdrop-blur-md p-4 flex flex-col justify-center">
+          <h4 className="text-[10px] font-mono text-cyan-400 mb-2 uppercase tracking-widest">Update Stream</h4>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <input 
+              autoFocus
+              type="text"
+              placeholder="Paste new URL here..."
+              className="w-full bg-black/40 border border-slate-700 rounded px-2 py-2 text-[10px] font-mono text-slate-200 outline-none focus:border-cyan-500/50"
+              value={newUrl}
+              onChange={e => setNewUrl(e.target.value)}
             />
-          </>
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-slate-600 font-mono text-xs text-center">
-              <WifiOff size={18} className="mx-auto mb-1 opacity-40" />
-              NO SIGNAL
+            <div className="flex gap-2">
+              <button type="submit" className="flex-1 bg-cyan-500/20 text-cyan-400 text-[10px] font-mono py-1.5 rounded border border-cyan-500/30 hover:bg-cyan-500/40 transition-all flex items-center justify-center gap-2">
+                <Save size={12} /> UPDATE FEED
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setShowInput(false)} 
+                className="px-3 bg-slate-800 text-slate-400 rounded hover:text-white transition-colors"
+              >
+                CANCEL
+              </button>
             </div>
-          </div>
-        )}
+          </form>
+        </div>
+      )}
+
+      {/* Stream Area — always visible, never blocked by error state */}
+      <div 
+        className="flex-1 relative bg-[#060a12] overflow-hidden cursor-pointer" 
+        style={{ minHeight: '160px' }}
+        onClick={onZoom}
+      >
+        {/* Live pulse indicator */}
+        <div className="absolute top-2 right-2 z-20 flex items-center gap-1 pointer-events-none">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[8px] font-mono text-emerald-400 opacity-80">LIVE</span>
+        </div>
+
+        {/* MJPEG stream — always rendered */}
+        <img
+          key={cam.streamUrl}
+          ref={imgRef}
+          src={cam.streamUrl}
+          alt={cam.label}
+          className="w-full h-full object-cover"
+        />
 
         {/* Hover zoom overlay */}
-        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer" onClick={onZoom}>
-          <div className="bg-[#0B0F19]/80 backdrop-blur p-2.5 rounded-full border border-slate-700 text-white pointer-events-none">
+        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+          <div className="bg-[#0B0F19]/80 backdrop-blur p-2.5 rounded-full border border-slate-700 text-white">
             <Maximize2 size={20} />
           </div>
         </div>
-        {/* Live HUD - Right Bottom */}
-        <div className="absolute bottom-2 right-2 flex flex-col items-end gap-1 pointer-events-none">
-          {confidence && isReal && !errored && (
-            <div className="bg-[#0B0F19]/90 border border-slate-700/50 px-2 py-1 rounded shadow-lg text-right backdrop-blur-sm pointer-events-auto">
-              <div className="text-[9px] font-mono text-slate-500 uppercase">Detection Conf</div>
-              <div className="text-xs font-mono font-bold text-cyan-400">{confidence.toFixed(1)}%</div>
+        
+        {/* Detection confidence HUD */}
+        <div className="absolute bottom-4 right-3 flex flex-col items-end gap-1 pointer-events-none">
+          {confidence && isReal && (
+            <div className="bg-[#0B0F19]/95 border border-slate-700/50 px-3 py-2 rounded-lg shadow-xl text-right backdrop-blur-md pointer-events-auto min-w-[90px]">
+              <div className="text-[9px] font-mono text-slate-500 uppercase tracking-tight mb-1">Detection Conf</div>
+              <div className="text-sm font-mono font-bold text-cyan-400 leading-tight">{confidence.toFixed(1)}%</div>
             </div>
           )}
         </div>
@@ -331,9 +421,9 @@ function CameraCard({
       {/* Card Footer */}
       <div className="px-3 py-1.5 bg-[#060a12] border-t border-slate-800/50 flex justify-between items-center">
         <div className="flex gap-3 text-[9px] font-mono text-slate-500">
-          {cam.features.map(f => (
+          {cam.features.length > 0 ? cam.features.map(f => (
             <span key={f} className={`${FEATURE_COLORS[f]?.split(' ')[0] ?? 'text-slate-500'}`}>{f}</span>
-          ))}
+          )) : <span>STANDBY</span>}
         </div>
         <span className="text-[9px] font-mono text-slate-600">LIVE</span>
       </div>
@@ -370,7 +460,7 @@ function ZoomModal({ cam, onClose }: { cam: CamDef; onClose: () => void }) {
             <div>
               <h2 className="text-base font-mono font-bold text-slate-200">{cam.label} — {cam.location}</h2>
               <p className="text-[10px] font-mono text-slate-500 mt-0.5">
-                FEATURES: {cam.features.join(' • ')}
+                FEATURES: {cam.features.length > 0 ? cam.features.join(' • ') : 'NONE'}
               </p>
             </div>
           </div>

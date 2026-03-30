@@ -7,8 +7,8 @@ import numpy as np
 class ZoneIntrusionDetector:
     def __init__(self, polygons=None):
         if polygons is None:
-            # default polygon for the tracks area
-            self.track_zone = np.array([[100, 400], [540, 400], [540, 480], [100, 480]], dtype=np.int32)
+            # Massive default polygon for the tracks area covering bottom 70% of 1080p screen
+            self.track_zone = np.array([[0, 250], [1920, 250], [1920, 1080], [0, 1080]], dtype=np.int32)
         else:
             self.track_zone = np.array(polygons, dtype=np.int32)
 

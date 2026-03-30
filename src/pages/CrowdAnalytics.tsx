@@ -3,7 +3,7 @@ import { Header } from '../components/Header';
 import { Users, Activity, TrendingUp, RefreshCw, WifiOff } from 'lucide-react';
 import useSystemStore from '../store/useSystemStore';
 
-const API = 'http://localhost:8000';
+const API = 'http://localhost:8001';
 const GRID_COLS = 20;
 const GRID_ROWS = 20;
 

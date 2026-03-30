@@ -22,7 +22,7 @@ export const sampleAlerts = [
   { id: 'ALR-003', type: 'UNATTENDED_BAGGAGE', camera: 'CAM-007', location: 'Waiting Area', timestamp: Date.now() - 300000, aiConfidence: 82, acknowledged: true },
   { id: 'ALR-004', type: 'SUSPICIOUS_BEHAVIOUR', camera: 'CAM-004', location: 'Entry Gate A', timestamp: Date.now() - 600000, aiConfidence: 74, acknowledged: true },
   { id: 'ALR-005', type: 'OVERCROWDING', camera: 'CAM-003', location: 'Platform 2 - Central', timestamp: Date.now() - 900000, aiConfidence: 91, acknowledged: false },
-  { id: 'ALR-006', type: 'PERSON_ON_TRACK', camera: 'CAM-008', location: 'Footbridge', timestamp: Date.now() - 1800000, aiConfidence: 95, acknowledged: true },
+  { id: 'ALR-006', type: 'PERSON_ON_TRACK', camera: 'CAM-008', location: 'Footbridge', timestamp: Date.now() - 1800100, aiConfidence: 95, acknowledged: true },
 ];
 
 // Text generator for random alerts
