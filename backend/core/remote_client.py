@@ -24,22 +24,19 @@ class RemoteInferenceClient:
     """
 
     def __init__(self):
-        self.remote_url = os.environ.get("REMOTE_INFERENCE_URL", "").strip()
-        self.mode = os.environ.get("INFERENCE_MODE", "local").strip().lower()
+        # ULTIMATE OVERRIDE FOR HACKATHON DEMO: Bypass .env race conditions
+        self.remote_url = "https://railguard-bitsgoa.loca.lt"
+        self.mode = "remote"
+        
         self.is_connected = False
         self.latency_ms = 0.0
         self.last_health_check = 0
         self._consecutive_failures = 0
         self._lock = threading.Lock()
 
-        if self.mode == "remote" and self.remote_url and _REQUESTS_AVAILABLE:
-            print(f"[RemoteClient] Mode set to REMOTE. Target: {self.remote_url}")
-            # Immediate check at startup
-            self._check_health()
-            self._start_health_monitor()
-        else:
-            print("[RemoteClient] Mode set to LOCAL. Bridge disabled.")
-            self.mode = "local"
+        print(f"🚀 [ULTIMATE BRIDGE] Target: {self.remote_url} (Waking up in background...)")
+        # Do NOT check health synchronously at startup (prevents hanging)
+        self._start_health_monitor()
 
     def _start_health_monitor(self):
         """Background thread that periodically pings the remote bridge with adaptive frequency."""
@@ -61,8 +58,9 @@ class RemoteInferenceClient:
 
         try:
             start = time.time()
-            # Bypassing SSL for Hackathon WiFi security blocks
-            resp = requests.get(f"{self.remote_url}/health", timeout=10, verify=False)
+            # Bypassing SSL for Hackathon WiFi security blocks + Localtunnel Interstitial
+            headers = {"Bypass-Tunnel-Reminder": "true"}
+            resp = requests.get(f"{self.remote_url}/health", timeout=10, verify=False, headers=headers)
             elapsed = (time.time() - start) * 1000
 
             if resp.status_code == 200:
@@ -91,19 +89,27 @@ class RemoteInferenceClient:
         Send a frame to the remote GPU bridge for inference.
         Returns a list of detection dicts or None if currently disconnected.
         """
-        if self.mode != "remote" or not self.is_connected or not _REQUESTS_AVAILABLE:
+        if self.mode != "remote" or not _REQUESTS_AVAILABLE:
             return None
+
+        # Optimistic check: if not connected, try a 2s fast-timeout once
+        # If connected, use the standard 5s timeout
+        request_timeout = 5 if self.is_connected else 2
 
         try:
             _, jpg_buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
             jpg_bytes = jpg_buf.tobytes()
 
             start = time.time()
+            # Adding the Localtunnel bypass header to skip the "Tunnel Reminder" interstitial
+            headers = {"Bypass-Tunnel-Reminder": "true"}
+            
             resp = requests.post(
                 f"{self.remote_url}/detect",
                 files={"image": ("frame.jpg", jpg_bytes, "image/jpeg")},
                 data={"condition": condition},
-                timeout=5,
+                headers=headers,
+                timeout=request_timeout,
                 verify=False
             )
             elapsed = (time.time() - start) * 1000
@@ -111,7 +117,11 @@ class RemoteInferenceClient:
             if resp.status_code == 200:
                 data = resp.json()
                 with self._lock:
+                    if not self.is_connected:
+                        print(f" [OK] GPU Bridge Re-Established via Inference Path.")
+                    self.is_connected = True
                     self.latency_ms = round(elapsed, 1)
+                    self._consecutive_failures = 0
                 return data.get("detections", [])
             else:
                 self._handle_failure()

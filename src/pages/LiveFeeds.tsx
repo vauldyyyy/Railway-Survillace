@@ -63,11 +63,15 @@ const INITIAL_CAMERAS: CamDef[] = [
   },
   {
     id: 'cam5',
-    label: 'CAM-05',
-    location: 'Exit View',
+    label: 'CAM-05_LIVE',
+    location: 'Real-Time Demo',
     streamUrl: 'http://localhost:8001/video/cam5',
-    features: ['Re-ID'],
-    featureIcons: [<Camera size={10} key="r" />],
+    features: ['Person', 'Baggage', 'Re-ID'],
+    featureIcons: [
+      <Users size={10} key="p" />,
+      <Package size={10} key="b" />,
+      <Camera size={10} key="r" />
+    ],
   },
   {
     id: 'cam6',

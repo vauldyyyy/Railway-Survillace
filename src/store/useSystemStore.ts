@@ -183,17 +183,32 @@ const useSystemStore = create<SystemState>((set, get) => ({
   }),
 
   toggleGpuBridge: async () => {
+    const store = useSystemStore.getState();
+    const currentMode = store.gpuBridge.mode;
+    const nextMode = currentMode === 'local' ? 'remote' : 'local';
+
+    // 1. Optimistic Update (Flip the switch instantly)
+    store.updateBridgeStatus({
+      ...store.gpuBridge,
+      mode: nextMode,
+      connected: nextMode === 'remote' ? store.gpuBridge.connected : false,
+    });
+
     try {
       const res = await fetch('http://127.0.0.1:8001/api/bridge/toggle', { method: 'POST' });
       if (res.ok) {
-        // Fetch new status instantly
+        // 2. Fetch ground truth backend status instantly
         const statusRes = await fetch('http://127.0.0.1:8001/api/bridge-status');
         if (statusRes.ok) {
-           useSystemStore.getState().updateBridgeStatus(await statusRes.json());
+           store.updateBridgeStatus(await statusRes.json());
         }
+      } else {
+        throw new Error('API Error');
       }
     } catch(e) {
-      console.error('Failed to toggle GPU bridge', e);
+      console.error('Failed to toggle GPU bridge, reverting...', e);
+      // Revert if failed
+      store.updateBridgeStatus({ ...store.gpuBridge, mode: currentMode });
     }
   },
 

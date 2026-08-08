@@ -1,9 +1,0 @@
-# =====================================================================
-# RAILGUARD AI — ONE-CLICK REMOTE GPU BRIDGE STARTER
-# =====================================================================
-# 1. Open a new cell in Google Colab (T4 GPU recommended).
-# 2. Paste the line below and run it.
-# 3. Copy the 'PUBLIC_URL' it generates into your local .env file.
-# =====================================================================
-
-!curl -sSL https://raw.githubusercontent.com/Sai03SkAr/Railway-Surveillance-BitsGoa/vauldy/backend/docs/remote_ai_server.py -o remote_ai_server.py && python remote_ai_server.py

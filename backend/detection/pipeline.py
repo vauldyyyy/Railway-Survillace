@@ -1,35 +1,29 @@
 """
-Unified Surveillance Pipeline V4.0 — Entity-State Engine
-=========================================================
-Production-grade multi-entity railway surveillance system.
-
-Architecture:
-  Layer 1: Detection        (yolo_world.py)  — Raw bounding boxes
-  Layer 2: Classification   (entity_state.py) — Map to EntityClass
-  Layer 3: Tracking         (reid.py + CentroidTracker) — Persistent IDs
-  Layer 4: Entity Registry  (entity_state.py) — Per-camera entity store
-  Layer 5: Spatial Analysis (entity_state.py) — IoU, proximity, zone checks
-  Layer 6: State Transition (entity_state.py) — Camera-specific FSM
-  Layer 7: Visual Rendering (entity_renderer.py) — Entity-aware drawing
-  Layer 8: Alert Publisher  (interpretation.py) — Structured JSON alerts
+pipeline.py -- Unified Surveillance Pipeline V4.0 (Entity-State Engine)
+========================================================================
+Fully wires detections through the Entity-State Engine:
+  1. YOLO-World detection
+  2. Class-to-EntityClass routing via classify_detection()
+  3. CentroidTracker assigns persistent IDs per entity class
+  4. EntityRegistry stores all entity state (thread-safe, per-camera)
+  5. StateTransitionEngine evaluates per-camera FSM rules
+  6. EntityRenderer draws color-coded bounding boxes from entity state
+  7. Structured JSON alerts emitted to main.py alert publisher
 """
 import time
 import cv2
 import numpy as np
 from collections import deque
 
+from detection.zone_alert import ZoneIntrusionDetector
 from detection.yolo_world import ZeroShotDetector
 from detection.reid import ReIDTracker
-from detection.temporal_filter import TemporalFilter
 from detection.preprocessor import preprocessor
-from detection.zone_alert import ZoneIntrusionDetector
 from detection.entity_state import (
-    EntityClass, EntityState, Entity,
-    EntityRegistry, CentroidTracker, SpatialEngine, StateTransitionEngine,
-    classify_detection,
+    EntityClass, EntityRegistry, CentroidTracker,
+    StateTransitionEngine, classify_detection
 )
 from detection.entity_renderer import EntityRenderer
-from detection.interpretation import ThreatEngine
 
 try:
     from core.remote_client import remote_client
@@ -44,48 +38,38 @@ INFERENCE_WIDTH = 800
 
 class SurveillancePipeline:
     def __init__(self):
-        print("\n" + "=" * 60)
-        print("  INITIALIZING ENTITY-STATE SURVEILLANCE ENGINE V4.0")
-        print("  MULTI-ENTITY FSM | PER-CAMERA RULES | ZERO-MISS")
-        print("=" * 60)
+        print("\n-------------------------------------------------------")
+        print("  INITIALIZING MASTER INTELLIGENCE PIPELINE (V4.0)")
+        print("  ENTITY-STATE ENGINE -- ALL CAMERAS ACTIVE")
+        print("-------------------------------------------------------")
 
-        # ── Layer 1: Detection ──
+        # Detection
         self.yolo = ZeroShotDetector()
-
-        # ── Layer 2-3: Tracking ──
-        self.reid = ReIDTracker(threshold=0.72, epsilon=0.1)
-        self.centroid_tracker = CentroidTracker(max_disappeared=8)
-        self.temp_filter = TemporalFilter(min_hits=3, max_age=8)
-
-        # ── Layer 4: Entity Registry ──
-        self.registry = EntityRegistry(max_age_seconds=5.0)
-
-        # ── Layer 5: Spatial Engine ──
+        self.reid = ReIDTracker(threshold=0.75, epsilon=1.2)
         self.zone_detector = ZoneIntrusionDetector()
-
-        # ── Layer 6: State Transition Engine ──
-        self.state_engine = StateTransitionEngine(zone_detector=self.zone_detector)
-
-        # ── Layer 7: Renderer ──
-        self.renderer = EntityRenderer()
-
-        # ── Layer 8: Alert Publisher (legacy compat) ──
-        self.threat_engine = ThreatEngine()
-
-        # ── Infrastructure ──
         self.remote_client = remote_client if _REMOTE_AVAILABLE else None
+
+        # Entity-State Engine layers
+        self.registry   = EntityRegistry(max_age_seconds=6.0)
+        self.tracker    = CentroidTracker(max_disappeared=8)
+        self.fsm        = StateTransitionEngine(zone_detector=self.zone_detector)
+        self.renderer   = EntityRenderer()
+
+        # FPS tracking
         self._fps_timestamps = deque(maxlen=30)
         self.current_fps = 0.0
         self.rolling_confidence = 0.0
+        self.heatmap_grid = [[0.0] * 20 for _ in range(20)]
         self.inference_source = "local"
         self.inference_latency = 0.0
-        self.heatmap_grid = [[0.0] * 20 for _ in range(20)]
 
-        print("[OK] Entity-State Engine V4.0 Loaded.")
-        if self.remote_client and self.remote_client.mode == "remote":
-            print("[Pipeline] Hybrid Inference ENABLED (Remote GPU Bridge)\n")
-        else:
-            print("[Pipeline] Local Inference Mode\n")
+        self.crowd_threshold = 10
+
+        print("[OK] Pipeline V4.0 Entity-State Engine Loaded.")
+
+    # ------------------------------------------------------------------ #
+    #  INTERNAL HELPERS                                                    #
+    # ------------------------------------------------------------------ #
 
     def _update_fps(self):
         now = time.time()
@@ -100,43 +84,54 @@ class SurveillancePipeline:
         if w <= INFERENCE_WIDTH:
             return frame, 1.0
         scale = INFERENCE_WIDTH / w
-        new_w = INFERENCE_WIDTH
-        new_h = int(h * scale)
-        resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        resized = cv2.resize(frame, (INFERENCE_WIDTH, int(h * scale)), interpolation=cv2.INTER_LINEAR)
         return resized, scale
 
     def _scale_box(self, box, scale):
         if scale == 1.0:
             return box
         inv = 1.0 / scale
-        return [int(box[0] * inv), int(box[1] * inv), int(box[2] * inv), int(box[3] * inv)]
+        return [int(v * inv) for v in box]
+
+    # ------------------------------------------------------------------ #
+    #  MAIN PIPELINE RUN                                                   #
+    # ------------------------------------------------------------------ #
 
     def run(self, frame, camera_id="default"):
         """
-        Single end-to-end inference pass through the Entity-State Engine.
-        Returns: (annotated_frame, alerts, entity_ids)
+        Single end-to-end inference pass.
+        Returns: (annotated_frame, structured_alerts, confirmed_ids)
         """
         self._update_fps()
         h, w = frame.shape[:2]
 
-        # ══════════════════════════════════════════════════════════════
-        # LAYER 1: DETECTION
-        # ══════════════════════════════════════════════════════════════
+        # --- 0. Preprocessing (denoise, enhance contrast) ---------------
         frame_enhanced, condition = preprocessor.process(frame)
+
+        # --- 1. Resize for inference ------------------------------------
         inference_frame, scale = self._resize_for_inference(frame_enhanced)
 
+        # --- 2. Hybrid Inference (Remote GPU / Local CPU) ---------------
+        # SPEED-SPLIT: Force Cam 5 (Webcam Demo) to Local. 
+        # Cam 3 (Fire Demo) moves to REMOTE GPU for zero-lag 30FPS motion.
+        is_hybrid_local = (camera_id == "cam5")
+        
         detections = None
-        if self.remote_client and self.remote_client.is_connected:
-            detections = self.remote_client.detect_remote(inference_frame, condition=condition)
-            if detections is not None:
-                self.inference_source = "remote"
-                self.inference_latency = self.remote_client.latency_ms
-            else:
-                self.inference_latency = 0.0
+        if not is_hybrid_local and self.remote_client and self.remote_client.is_connected:
+            try:
+                detections = self.remote_client.detect_remote(inference_frame, condition=condition)
+                if detections is not None:
+                    self.inference_source = "remote"
+                    self.inference_latency = self.remote_client.latency_ms
+                else:
+                    self.inference_latency = 0.0
+            except Exception as e:
+                print(f"[Pipeline] Remote AI bridge error: {e}. Defaulting to LOCAL AI.")
+                detections = None
 
-        if detections is None:
-            active_conf = 0.15 if camera_id == "cam2" else None
-            detections = self.yolo.detect(inference_frame, conf_threshold=active_conf, condition=condition)
+        if not detections:
+            active_conf = 0.08 if camera_id == "cam2" else None
+            detections = self.yolo.detect(inference_frame, conf_threshold=active_conf, condition=condition, camera_id=camera_id)
             self.inference_source = "local"
 
         # Scale boxes back to original resolution
@@ -144,22 +139,20 @@ class SurveillancePipeline:
             for det in detections:
                 det["box"] = self._scale_box(det["box"], scale)
 
-        # Update rolling confidence
+        # --- 3. Update rolling confidence --------------------------------
         if detections:
-            valid_confs = [d["confidence"] for d in detections if d["confidence"] > 0.30]
-            if valid_confs:
-                avg_conf = sum(valid_confs) / len(valid_confs)
-                self.rolling_confidence = (self.rolling_confidence * 0.95) + (avg_conf * 0.05)
+            valid = [d["confidence"] for d in detections if d["confidence"] > 0.30]
+            if valid:
+                avg = sum(valid) / len(valid)
+                self.rolling_confidence = self.rolling_confidence * 0.95 + avg * 0.05
 
-        # Heatmap decay
+        # --- 4. Heatmap decay --------------------------------------------
         for i in range(20):
             for j in range(20):
                 self.heatmap_grid[i][j] *= 0.98
 
-        # ══════════════════════════════════════════════════════════════
-        # LAYER 2: CLASSIFICATION — Map raw class names to EntityClass
-        # ══════════════════════════════════════════════════════════════
-        classified: dict = {
+        # --- 5. Bucket detections by EntityClass -------------------------
+        buckets: dict[EntityClass, list] = {
             EntityClass.PERSON:  [],
             EntityClass.BAGGAGE: [],
             EntityClass.SMOKE:   [],
@@ -167,149 +160,140 @@ class SurveillancePipeline:
             EntityClass.TRACK:   [],
             EntityClass.UNKNOWN: [],
         }
-
         for det in detections:
-            entity_class = classify_detection(det["class_name"])
-            classified[entity_class].append(det)
+            # Specialization: Cam 1 is PLATFORM ONLY (No bag/smoke/fire)
+            if camera_id == "cam1":
+                if det["class_name"].lower() not in ("person", "track", "rail"):
+                    continue
 
-        # ══════════════════════════════════════════════════════════════
-        # LAYER 3: TRACKING — Assign persistent IDs to each detection
-        # ══════════════════════════════════════════════════════════════
+            # Specialization: Cam 2 is OVERCROWDING ONLY (No bag/fire/smoke)
+            if camera_id == "cam2":
+                if det["class_name"].lower() not in ("person", "human", "intruder"):
+                    continue
 
-        # Persons: use neural ReID tracker
-        person_tracked = []
-        for det in classified[EntityClass.PERSON]:
-            reid_id, path = self.reid.update(frame, det["box"], camera_id)
-            if reid_id:
-                person_tracked.append((f"P_{reid_id[:5]}", det))
+
+            # Specialization: Cam 4 is BAGGAGE-OWNERSHIP ONLY
+            if camera_id == "cam4":
+                if det["class_name"].lower() not in ("person", "bag", "luggage", "backpack", "suitcase"):
+                    continue
+
+
+            # Specialization: Cam 7 is PEOPLE-ONLY LIVE STREAM
+            if camera_id == "cam7":
+                if det["class_name"].lower() not in ("person", "human", "intruder"):
+                    continue
+
+            ec = classify_detection(det["class_name"])
+            buckets[ec].append(det)
+
+        # --- 6. Track each class with CentroidTracker --------------------
+        #        Person entities also go through ReID for cross-frame IDs
+        structured_entities = []  # [(entity_id, EntityClass, det)]
+
+        for ec, dets in buckets.items():
+            if ec == EntityClass.UNKNOWN or not dets:
+                continue
+
+            if ec == EntityClass.PERSON:
+                # Use ReID tracker for persons (neural 512-D matching)
+                for det in dets:
+                    reid_id, path = self.reid.update(frame, det["box"], camera_id)
+                    if reid_id is None:
+                        # Crop too small for ReID — still register with centroid ID
+                        x1, y1, x2, y2 = det["box"]
+                        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                        reid_id = f"P_f{cx}_{cy}"
+                        path = []
+                    structured_entities.append((reid_id, ec, det, path))
+
             else:
-                # Fallback to centroid tracker if ReID fails
-                ct_results = self.centroid_tracker.update(
-                    camera_id, EntityClass.PERSON, [det]
-                )
-                person_tracked.extend(ct_results)
+                # Use CentroidTracker for all other classes
+                matches = self.tracker.update(camera_id, ec, dets)
+                for eid, det in matches:
+                    structured_entities.append((eid, ec, det, None))
 
-        # Non-person entities: centroid tracker
-        bag_tracked = self.centroid_tracker.update(
-            camera_id, EntityClass.BAGGAGE, classified[EntityClass.BAGGAGE]
-        )
-        smoke_tracked = self.centroid_tracker.update(
-            camera_id, EntityClass.SMOKE, classified[EntityClass.SMOKE]
-        )
-        fire_tracked = self.centroid_tracker.update(
-            camera_id, EntityClass.FIRE, classified[EntityClass.FIRE]
-        )
+        # --- 7. Upsert all entities into the EntityRegistry --------------
+        for item in structured_entities:
+            eid, ec, det, path = item
+            entity = self.registry.upsert(camera_id, eid, ec, det["box"], det["confidence"])
+            
+            # ATTACH SEGMENTATION MASK (For precision outlines like Fire)
+            if "mask" in det:
+                entity.mask = det["mask"]
 
-        # ══════════════════════════════════════════════════════════════
-        # LAYER 4: ENTITY REGISTRY — Upsert all tracked entities
-        # ══════════════════════════════════════════════════════════════
-        all_tracked = (
-            [(EntityClass.PERSON, tid, det) for tid, det in person_tracked] +
-            [(EntityClass.BAGGAGE, tid, det) for tid, det in bag_tracked] +
-            [(EntityClass.SMOKE, tid, det) for tid, det in smoke_tracked] +
-            [(EntityClass.FIRE, tid, det) for tid, det in fire_tracked]
-        )
+            # Enrich person entities with motion/pose metadata from ReID path
+            if ec == EntityClass.PERSON and path:
+                if len(path) >= 3:
+                    pts = [p["center"] for p in path[-3:]]
+                    dist = np.linalg.norm(np.array(pts[0]) - np.array(pts[-1]))
+                    entity.is_motionless = dist < 8.0
 
-        for entity_class, entity_id, det in all_tracked:
-            self.registry.upsert(
-                camera_id, entity_id, entity_class,
-                det["box"], det["confidence"]
-            )
+                x1, y1, x2, y2 = det["box"]
+                bw = max(x2 - x1, 1); bh = max(y2 - y1, 1)
+                entity.is_fallen_pose = (bw / bh) > 1.3
 
-        # ══════════════════════════════════════════════════════════════
-        # LAYER 5 + 6: SPATIAL ANALYSIS + STATE TRANSITIONS
-        # ══════════════════════════════════════════════════════════════
-        active_entities = self.registry.get_all(camera_id)
-        state_alerts = self.state_engine.evaluate(camera_id, active_entities, self.registry)
-
-        # Also run legacy ThreatEngine for operational command mapping
-        # Build observations for backward compatibility
-        observations = []
-        for e in active_entities:
-            obs = {
-                "id": e.id,
-                "class": e.base_class.value,
-                "box": e.box,
-                "confidence": e.confidence,
-                "is_intrusion": e.is_in_track_zone,
-                "is_fallen_pose": e.is_fallen_pose,
-                "is_motionless": e.is_motionless,
-            }
-            if e.base_class == EntityClass.BAGGAGE:
-                obs["is_unattended"] = e.current_state in (
-                    EntityState.BAGGAGE_UNATTENDED, EntityState.BAGGAGE_BOMB
-                )
-                obs["duration_s"] = e.separation_duration
-            observations.append(obs)
-
-        # Temporal filter for confirmed person tracks
-        person_ids = [e.id for e in active_entities if e.base_class == EntityClass.PERSON]
-        confirmed_ids = self.temp_filter.update(person_ids)
-
-        # Legacy threat engine alerts (for operational command mapping)
-        legacy_alerts = self.threat_engine.process_observations(camera_id, observations)
-
-        # Merge: use state_alerts for entity-specific data, legacy for command mapping
-        final_alerts = []
-        for sa in state_alerts:
-            # Find matching legacy alert for command/notify/escalation
-            matched_legacy = None
-            for la in legacy_alerts:
-                if la.get("threat_type", "").lower() in sa.get("new_state", "").lower():
-                    matched_legacy = la
-                    break
-
-            if matched_legacy:
-                sa["command"] = matched_legacy.get("command", "MONITOR_SITUATION")
-                sa["notify"] = matched_legacy.get("notify", ["Security Monitor"])
-                sa["escalation"] = matched_legacy.get("escalation", [])
-            else:
-                sa["command"] = "MONITOR_SITUATION"
-                sa["notify"] = ["Security Monitor"]
-                sa["escalation"] = []
-
-            final_alerts.append(sa)
-
-        # If legacy produced alerts not covered by state engine, include them too
-        for la in legacy_alerts:
-            if not any(sa.get("camera_id") == la.get("camera_id") and
-                       sa.get("new_state", "").lower() in la.get("threat_type", "").lower()
-                       for sa in state_alerts):
-                # Convert to entity-alert format
-                final_alerts.append({
-                    "camera_id": la.get("camera_id", camera_id.upper()),
-                    "entity_id": "LEGACY",
-                    "base_class": "Unknown",
-                    "new_state": la.get("threat_type", "UNKNOWN"),
-                    "threat_level": la.get("threat_level", "INFO"),
-                    "timestamp": la.get("timestamp", ""),
-                    "confidence": la.get("confidence", 0.0),
-                    "command": la.get("command", "MONITOR_SITUATION"),
-                    "notify": la.get("notify", []),
-                    "escalation": la.get("escalation", []),
-                    "box": [],
-                })
-
-        # ══════════════════════════════════════════════════════════════
-        # LAYER 7: VISUAL RENDERING
-        # ══════════════════════════════════════════════════════════════
-        pipeline_stats = {
-            "inference_source": self.inference_source,
-            "fps": self.current_fps,
-            "latency": self.inference_latency,
-            "person_count": len(confirmed_ids),
-            "threat_count": len(final_alerts),
-            "entity_count": len(active_entities),
-        }
-
-        annotated_frame = self.renderer.render(frame, active_entities, pipeline_stats)
-
-        # ══════════════════════════════════════════════════════════════
-        # LAYER 8: GARBAGE COLLECTION
-        # ══════════════════════════════════════════════════════════════
+        # --- 8. Garbage collect stale entities ---------------------------
         self.registry.gc(camera_id)
 
-        return annotated_frame, final_alerts, confirmed_ids
+        # --- 9. Run State Transition Engine (FSM) ------------------------
+        all_entities = self.registry.get_all(camera_id)
+        fsm_alerts = self.fsm.evaluate(camera_id, all_entities, self.registry)
+
+        # Re-fetch after FSM may have added derived entities (crowd)
+        all_entities = self.registry.get_all(camera_id)
+
+        # --- 10. Render entities onto frame using EntityRenderer ---------
+        pipeline_stats = {
+            "camera_id":        camera_id.upper(),
+            "inference_source": self.inference_source,
+            "fps":              self.current_fps,
+            "latency":          self.inference_latency,
+            "confidence":       self.rolling_confidence,
+            "threat_count":     len(fsm_alerts),
+        }
+        annotated_frame = self.renderer.render(frame, all_entities, pipeline_stats)
+
+        # --- 11. Convert FSM alerts to TICE-format for main.py ----------
+        import datetime
+        tice_alerts = []
+        for alert in fsm_alerts:
+            threat_level = alert.get("threat_level", "INFO")
+            tice_alerts.append({
+                # TICE-compatible keys used by main.py alert publisher
+                "camera_id":   alert["camera_id"],
+                "threat_type": alert["new_state"].replace(" ", "_").upper(),
+                "threat_level": threat_level,
+                "command": _threat_command(threat_level),
+                "notify": ["Security Monitor"],
+                "escalation": ["Station Commander"] if threat_level == "CRITICAL" else [],
+                "timestamp": alert.get("timestamp", datetime.datetime.now().isoformat()),
+                "confidence": alert.get("confidence", 0.0),
+                # Extra metadata kept for UI
+                "entity_id":  alert.get("entity_id"),
+                "base_class": alert.get("base_class"),
+                "box":        alert.get("box", []),
+                "type":       alert.get("new_state", ""),
+                "severity":   threat_level.lower(),
+                "alert":      True,
+                "uuid":       f"{camera_id}_{alert.get('entity_id')}_{int(time.time())}",
+            })
+
+        # Confirmed person IDs for crowd count in HUD
+        confirmed_ids = set(
+            e.id for e in all_entities
+            if e.base_class == EntityClass.PERSON
+        )
+
+        return annotated_frame, tice_alerts, confirmed_ids
+
+
+def _threat_command(threat_level: str) -> str:
+    return {
+        "CRITICAL": "EVACUATE_IMMEDIATELY",
+        "HIGH":     "DISPATCH_SECURITY",
+        "MEDIUM":   "MONITOR_CLOSELY",
+        "LOW":      "LOG_INCIDENT",
+    }.get(threat_level, "MONITOR_SITUATION")
 
 
 # Global singleton

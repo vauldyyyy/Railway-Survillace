@@ -265,18 +265,29 @@ function ThreatCard({ threat, onResolve, onFalseAlarm, onViewCamera, onTrackSusp
   const locStr = threat.location || threat.camera_id || 'UNKNOWN LOCATION';
   const severity = (threat.severity || threat.threat_level || 'INFO').toUpperCase();
   const timeStr = threat.timestamp ? (threat.timestamp.includes('T') ? formatDistanceToNow(new Date(threat.timestamp)) + ' ago' : new Date(threat.timestamp).toLocaleTimeString()) : 'Now';
-  const image = threat.imageUrl || "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=400";
+  // Use the AI-captured snapshot if available; no placeholder Stock photo
+  const image = threat.imageUrl || (threat as any).image || null;
+  const isSnapshot = !!image && image.startsWith('data:image');
  
   return (
     <div className={`bg-[#151C2C] border ${severityBorder(severity)} rounded-lg overflow-hidden flex`}>
       <div className="w-64 shrink-0 relative bg-slate-900 overflow-hidden" style={{ minHeight: '160px' }}>
-        <img src={image} alt={typeStr} className="w-full h-full object-cover opacity-80" style={{ minHeight: '160px' }} />
+        {image ? (
+          <img src={image} alt={typeStr} className="w-full h-full object-cover opacity-90" style={{ minHeight: '160px' }} />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center" style={{ minHeight: '160px' }}>
+            <div className="text-slate-700 text-[10px] font-mono text-center space-y-1">
+              <div className="text-2xl opacity-30">📷</div>
+              <div>AWAITING SNAPSHOT</div>
+            </div>
+          </div>
+        )}
         <div className={`absolute top-2 left-2 ${severityBg(severity)} text-white text-[10px] font-bold px-2 py-1 rounded`}>
           {severity}
         </div>
         <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-[#0B0F19]/80 px-1.5 py-0.5 rounded text-[9px] font-mono text-emerald-400">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          LIVE
+          {isSnapshot ? 'SNAPSHOT' : 'LIVE'}
         </div>
       </div>
 

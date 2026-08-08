@@ -146,15 +146,16 @@ const useAlertStore = create<AlertStoreState>((set, get) => ({
             continue;
           }
 
-          // New alert
+          // New alert — use backend fields directly, null image means 'AWAITING SNAPSHOT'
+          const snapshotImage = (r.image && r.image.startsWith('data:image')) ? r.image : null;
           const alert: Alert = {
             id:          alertId,
             timestamp:   new Date(r.ts * 1000).toISOString(),
-            type:        r.type,
-            severity:    severityFromType(r.type),
+            type:        (r as any).threat_type || r.type,
+            severity:    severityFromType((r as any).threat_type || r.type),
             location:    r.cam,
-            description: descFromType(r.type, r.cam),
-            imageUrl:    r.image || PLACEHOLDER,
+            description: descFromType((r as any).threat_type || r.type, r.cam),
+            imageUrl:    snapshotImage || '',
             status:      'ACTIVE',
             cam:         r.cam,
             ts:          r.ts,

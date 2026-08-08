@@ -1,12 +1,12 @@
 """
-entity_state.py — Production Entity-State Engine
+entity_state.py - Production Entity-State Engine
 ==================================================
 Layered architecture for multi-entity railway surveillance.
 
-Layer 1: Entity Registry      — Persistent per-camera entity store with unique IDs
-Layer 2: Spatial Engine        — IoU, proximity, and zone intersection analysis
-Layer 3: State Transition FSM  — Camera-specific rule evaluation with hysteresis
-Layer 4: Centroid Tracker      — Lightweight tracking for non-person entities
+Layer 1: Entity Registry      - Persistent per-camera entity store with unique IDs
+Layer 2: Spatial Engine        - IoU, proximity, and zone intersection analysis
+Layer 3: State Transition FSM  - Camera-specific rule evaluation with hysteresis
+Layer 4: Centroid Tracker      - Lightweight tracking for non-person entities
 
 Design Constraints:
   - Thread-safe: all registry operations use per-camera locks
@@ -22,11 +22,12 @@ import math
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any
+import numpy as np
 from collections import defaultdict
 
 
 # ════════════════════════════════════════════════════════════════════════
-# ENUMS — Entity Classification & State Machine
+# ENUMS - Entity Classification & State Machine
 # ════════════════════════════════════════════════════════════════════════
 
 class EntityClass(Enum):
@@ -49,20 +50,21 @@ class EntityState(Enum):
     SMOKE_CRITICAL      = "SMOKE_CRITICAL"
     FIRE_DETECTED       = "FIRE_DETECTED"
     OVERCROWDING        = "OVERCROWDING"
+    STAMPEDE_RISK       = "STAMPEDE_RISK"
 
 
 # ════════════════════════════════════════════════════════════════════════
-# COLOR SYSTEM — BGR format for OpenCV
+# COLOR SYSTEM - BGR format for OpenCV
 # ════════════════════════════════════════════════════════════════════════
 
 # Base colors: the default color when entity is in BASE state
 BASE_COLORS: Dict[EntityClass, Tuple[int, int, int]] = {
-    EntityClass.PERSON:   (255, 150, 50),    # Blue (BGR)
+    EntityClass.PERSON:   (255, 60, 0),      # Electric Blue (BGR)
     EntityClass.TRACK:    (0, 255, 255),      # Yellow (BGR)
     EntityClass.BAGGAGE:  (0, 210, 80),       # Green (BGR)
     EntityClass.SMOKE:    (160, 160, 160),    # Gray (BGR)
     EntityClass.FIRE:     (0, 140, 255),      # Orange (BGR)
-    EntityClass.CROWD:    (200, 200, 0),      # Cyan (BGR) — derived entity
+    EntityClass.CROWD:    (200, 200, 0),      # Cyan (BGR) - derived entity
     EntityClass.UNKNOWN:  (180, 180, 180),    # Light gray
 }
 
@@ -76,7 +78,8 @@ STATE_COLORS: Dict[EntityState, Tuple[int, int, int]] = {
     EntityState.SMOKE_DETECTED:      (50, 50, 200),       # DIM RED
     EntityState.SMOKE_CRITICAL:      (0, 0, 255),         # RED
     EntityState.FIRE_DETECTED:       (0, 0, 255),         # RED (flashing handled by renderer)
-    EntityState.OVERCROWDING:        (0, 0, 255),         # RED zone boundary
+    EntityState.OVERCROWDING:        (0, 0, 255),         # RED
+    EntityState.STAMPEDE_RISK:       (0, 0, 255),         # RED (critical)
 }
 
 # State labels: display name for the HUD overlay
@@ -85,11 +88,12 @@ STATE_LABELS: Dict[EntityState, str] = {
     EntityState.PERSON_ON_TRACK:     "PERSON ON TRACK",
     EntityState.PERSON_FALLEN:       "PERSON FALLEN ON TRACK",
     EntityState.BAGGAGE_UNATTENDED:  "UNATTENDED BAGGAGE",
-    EntityState.BAGGAGE_BOMB:        "⚠ BOMB PROTOCOL",
+    EntityState.BAGGAGE_BOMB:        "[!] BOMB PROTOCOL",
     EntityState.SMOKE_DETECTED:      "SMOKE DETECTED",
-    EntityState.SMOKE_CRITICAL:      "SMOKE — CRITICAL",
-    EntityState.FIRE_DETECTED:       "🔥 FIRE DETECTED",
+    EntityState.SMOKE_CRITICAL:      "SMOKE - CRITICAL",
+    EntityState.FIRE_DETECTED:       "FIRE DETECTED",
     EntityState.OVERCROWDING:        "OVERCROWDING ZONE",
+    EntityState.STAMPEDE_RISK:       "STAMPEDE RISK / CROWD CRITICAL",
 }
 
 # Threat level mapping for structured alerts
@@ -103,6 +107,7 @@ STATE_THREAT_LEVELS: Dict[EntityState, str] = {
     EntityState.SMOKE_CRITICAL:      "CRITICAL",
     EntityState.FIRE_DETECTED:       "CRITICAL",
     EntityState.OVERCROWDING:        "HIGH",
+    EntityState.STAMPEDE_RISK:       "CRITICAL",
 }
 
 # Box thickness per state
@@ -116,11 +121,12 @@ STATE_THICKNESS: Dict[EntityState, int] = {
     EntityState.SMOKE_CRITICAL:      3,
     EntityState.FIRE_DETECTED:       3,
     EntityState.OVERCROWDING:        3,
+    EntityState.STAMPEDE_RISK:       4,
 }
 
 
 # ════════════════════════════════════════════════════════════════════════
-# ENTITY DATACLASS — Core data model for every tracked object
+# ENTITY DATACLASS - Core data model for every tracked object
 # ════════════════════════════════════════════════════════════════════════
 
 @dataclass
@@ -135,6 +141,7 @@ class Entity:
     last_seen:     float       = 0.0             # Unix timestamp
     camera_id:     str         = ""
     centroid:      Tuple[int, int] = (0, 0)
+    mask:          Optional[np.ndarray] = None   # Segmentation mask (polygon points)
 
     # State transition tracking
     state_enter_time: float = 0.0                # When current state was entered
@@ -150,8 +157,10 @@ class Entity:
     is_fallen_pose:       bool = False
     separation_duration:  float = 0.0            # For baggage separation timing
 
-    # Motion tracking (centroid history for motionless detection)
+    # Stability tracking
     centroid_history: List[Tuple[int, int]] = field(default_factory=list)
+    box_history:      List[List[int]]       = field(default_factory=list) # For temporal smoothing
+    hit_count:        int                   = 0                           # Confirmation frames
 
     @property
     def color(self) -> Tuple[int, int, int]:
@@ -198,7 +207,7 @@ class Entity:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# CENTROID TRACKER — Lightweight IoU + centroid matching for all classes
+# CENTROID TRACKER - Lightweight IoU + centroid matching for all classes
 # ════════════════════════════════════════════════════════════════════════
 
 class CentroidTracker:
@@ -208,7 +217,7 @@ class CentroidTracker:
     Person entities use the existing ReID tracker for neural matching.
     """
 
-    def __init__(self, max_disappeared: int = 8):
+    def __init__(self, max_disappeared: int = 30):
         self.next_id: Dict[str, int] = defaultdict(int)  # Per-class counters
         self.max_disappeared = max_disappeared
         # camera_id -> { entity_id: {"centroid": (cx,cy), "box": [..], "disappeared": int} }
@@ -348,7 +357,7 @@ class CentroidTracker:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# ENTITY REGISTRY — Per-camera persistent entity store
+# ENTITY REGISTRY - Per-camera persistent entity store
 # ════════════════════════════════════════════════════════════════════════
 
 class EntityRegistry:
@@ -377,6 +386,14 @@ class EntityRegistry:
                 e.centroid_history.append((cx, cy))
                 if len(e.centroid_history) > 10:
                     e.centroid_history.pop(0)
+                
+                # Keep last 5 boxes for temporal smoothing
+                e.box_history.append(box)
+                if len(e.box_history) > 5:
+                    e.box_history.pop(0)
+                e.hit_count += 1
+                e.hit_count += 1
+
             else:
                 cx, cy = (box[0] + box[2]) // 2, (box[1] + box[3]) // 2
                 e = Entity(
@@ -390,14 +407,24 @@ class EntityRegistry:
                     centroid=(cx, cy),
                     state_enter_time=now,
                     centroid_history=[(cx, cy)],
+                    box_history=[box],
+                    hit_count=1,
                 )
                 cam_store[entity_id] = e
             return e
 
     def get_all(self, camera_id: str) -> List[Entity]:
-        """Get all active entities for a camera."""
+        """Get all confirmed entities for a camera."""
         with self._locks[camera_id]:
-            return list(self._store.get(camera_id, {}).values())
+            # ONLY apply stability confirmation to demo cameras (4, 5)
+            # Revert to instant display for Cam 1, 2, 3 to ensure they play.
+            if camera_id in ("cam4", "cam5"):
+                return [
+                    e for e in self._store.get(camera_id, {}).values()
+                    if e.hit_count >= 2 
+                ]
+            else:
+                return list(self._store.get(camera_id, {}).values())
 
     def get_by_class(self, camera_id: str, cls: EntityClass) -> List[Entity]:
         """Get all active entities of a specific class for a camera."""
@@ -498,7 +525,7 @@ class SpatialEngine:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# STATE TRANSITION ENGINE — Camera-specific FSM rules
+# STATE TRANSITION ENGINE - Camera-specific FSM rules
 # ════════════════════════════════════════════════════════════════════════
 
 class StateTransitionEngine:
@@ -511,13 +538,15 @@ class StateTransitionEngine:
     """
 
     # Proximity threshold in pixels (~2m in typical railway camera FOV)
-    BAG_PERSON_PROXIMITY_PX = 150.0
+    BAG_PERSON_PROXIMITY_PX = 250.0
 
     # Timing thresholds
     CROWD_PERSIST_SECONDS   = 5.0
     CROWD_MIN_COUNT         = 10
-    SMOKE_ESCALATE_SECONDS  = 10.0
-    SMOKE_DETECT_SECONDS    = 5.0
+    SMOKE_ESCALATE_SECONDS  = 8.0
+    SMOKE_DETECT_SECONDS    = 3.0
+    
+    # Baggage Timings
     BAG_UNATTENDED_SECONDS  = 5.0
     BAG_BOMB_SECONDS        = 20.0
 
@@ -554,6 +583,10 @@ class StateTransitionEngine:
         # ── CAM4 RULES: Person + Bag Relationship ────────────────────
         if camera_id == "cam4":
             alerts.extend(self._eval_baggage(camera_id, bags, persons))
+
+        # ── CAM7 RULES (NEW): Overcrowded Place Logic ────────────────
+        if camera_id == "cam7":
+            alerts.extend(self._eval_crowd(camera_id, persons, registry))
 
         # ── UNIVERSAL RULES (all cameras) ────────────────────────────
         # Fire is immediately critical on ANY camera
@@ -592,7 +625,7 @@ class StateTransitionEngine:
 
     def _eval_crowd(self, camera_id: str, persons: List[Entity],
                     registry: EntityRegistry) -> List[dict]:
-        """Crowd density → derived OVERCROWDING entity."""
+        """Crowd density → derived OVERCROWDING / STAMPEDE_RISK entity."""
         alerts = []
         now = time.time()
 
@@ -609,9 +642,16 @@ class StateTransitionEngine:
                         camera_id, f"CWD_{camera_id}",
                         EntityClass.CROWD, crowd_box, 1.0
                     )
-                    if crowd_entity.current_state != EntityState.OVERCROWDING:
-                        crowd_entity.transition_to(EntityState.OVERCROWDING)
-                        alerts.append(self._build_alert(camera_id, crowd_entity))
+                    
+                    # ── Escalation Logic ────────────────────────────────────
+                    if len(persons) >= 20: # Stampede Risk threshold
+                        if crowd_entity.current_state != EntityState.STAMPEDE_RISK:
+                            crowd_entity.transition_to(EntityState.STAMPEDE_RISK)
+                            alerts.append(self._build_alert(camera_id, crowd_entity))
+                    else:
+                        if crowd_entity.current_state != EntityState.OVERCROWDING:
+                            crowd_entity.transition_to(EntityState.OVERCROWDING)
+                            alerts.append(self._build_alert(camera_id, crowd_entity))
         else:
             # Reset crowd timer
             self._crowd_timers.pop(camera_id, None)
@@ -661,21 +701,36 @@ class StateTransitionEngine:
             
             if bag.owner_id:
                 owner = next((p for p in persons if p.id == bag.owner_id), None)
-                if owner:
+                now = time.time()
+                
+                # Check if owner is still actively being detected (within last 1s)
+                if owner and (now - owner.last_seen) < 1.0:
                     dist = SpatialEngine.centroid_distance(bag, owner)
                     bag.nearest_person_id = owner.id
                     bag.nearest_person_dist = dist
                     if dist <= self.BAG_PERSON_PROXIMITY_PX:
                         is_separated = False
+                    else:
+                        is_separated = True
+                else:
+                    # OWNER HAS LEFT THE FRAME or is stale: Force immediate escalation
+                    is_separated = True
+                    # Force immediate UNATTENDED state by setting duration to satisfy threshold
+                    if bag.current_state == EntityState.BASE:
+                        # For Cam 4, we use a larger offset to guarantee instant firing
+                        offset = 1.0 if camera_id == "cam4" else 0.5
+                        bag.separation_duration = now - (self.BAG_UNATTENDED_SECONDS + offset)
             else:
-                # If bag was placed with no one around, it's immediately suspicious after a delay
-                if bag.age > 5.0:
+                # If bag was placed with no one around, it's immediately suspicious after a short delay
+                # Adaptive for Cam 4 (Hackathon requirement)
+                wait_time = 2.0 if camera_id == "cam4" else 5.0
+                if bag.age > wait_time:
                     is_separated = True
                 else:
                     is_separated = False
 
             if is_separated:
-                # Bag is separated from Depositor — increment separation timer
+                # Bag is separated from Depositor - increment separation timer
                 if bag.separation_duration == 0.0:
                     bag.separation_duration = time.time()  # Start timer
 
@@ -714,7 +769,7 @@ class StateTransitionEngine:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# CLASSIFICATION HELPER — Map YOLO class names to EntityClass
+# CLASSIFICATION HELPER - Map YOLO class names to EntityClass
 # ════════════════════════════════════════════════════════════════════════
 
 def classify_detection(class_name: str) -> EntityClass:
@@ -722,7 +777,7 @@ def classify_detection(class_name: str) -> EntityClass:
     cn = class_name.lower()
     if any(tag in cn for tag in ("person", "human", "intruder")):
         return EntityClass.PERSON
-    if any(tag in cn for tag in ("bag", "luggage", "backpack", "suitcase")):
+    if any(tag in cn for tag in ("bag", "luggage", "backpack", "suitcase", "travel bag", "black thing", "black object")):
         return EntityClass.BAGGAGE
     if any(tag in cn for tag in ("fire", "flame")):
         return EntityClass.FIRE
@@ -731,3 +786,4 @@ def classify_detection(class_name: str) -> EntityClass:
     if any(tag in cn for tag in ("track", "rail")):
         return EntityClass.TRACK
     return EntityClass.UNKNOWN
+

@@ -1,27 +1,29 @@
 """
-main.py — RailGuard AI Backend Server (V3 Production)
+main.py --- RailGuard AI Backend Server (V3 Production)
 =====================================================
 Fixes over V2:
-  - Decoupled capture from inference (separate threads + deque buffer)
-  - Alert cooldown + deduplication (30s window per type+camera)
-  - Severity-gated WS emission (only critical/high broadcast)
-  - Stream validation on source change
-  - Exponential backoff reconnect
-  - Thread-safe frame access
+  --- Decoupled capture from inference (separate threads + deque buffer)
+  --- Alert cooldown + deduplication (30s window per type+camera)
+  --- Severity-gated WS emission (only critical/high broadcast)
+  --- Stream validation on source change
+  --- Exponential backoff reconnect
+  --- Thread-safe frame access
 """
 
 import os
 import sys
 import time
-import json
 import datetime
+import json
 import asyncio
 import threading
 import subprocess
+import traceback
 from typing import List, Dict, Any
 from pathlib import Path
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+import base64
 
 try:
     from dotenv import load_dotenv
@@ -36,13 +38,11 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from fastapi import Request
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from security.auth import create_access_token, verify_token, verify_ws_token
-from core.security.auth import auth_engine
+from detection.entity_state import EntityClass, EntityState
 
 try:
     from app.core.database import init_db, log_incident, log_model_metric
@@ -54,6 +54,8 @@ except Exception as e:
 try:
     from core.remote_client import remote_client
     _REMOTE_CLIENT = remote_client
+    if _REMOTE_CLIENT:
+        print(f"🚀 [BRIDGE] Target: {_REMOTE_CLIENT.remote_url} (Mode: {_REMOTE_CLIENT.mode})")
 except ImportError:
     _REMOTE_CLIENT = None
 
@@ -78,6 +80,14 @@ executor = ThreadPoolExecutor(max_workers=4)
 # Tracks {type_camera} -> last_fired_timestamp to prevent spam
 _alert_cooldown: Dict[str, float] = {}
 ALERT_COOLDOWN_SECONDS = 30.0
+
+# ── Per-loop best-alert deduplication ──
+# Stores {cam_id_threat_type} -> best alert dict seen this cycle
+_best_alerts: Dict[str, dict] = {}
+_best_alerts_lock = threading.Lock()
+
+# Flush best alerts to WS every N seconds (one per threat type per camera)
+ALERT_FLUSH_INTERVAL = 2.0
 
 
 def get_video_source(default_url=None):
@@ -123,45 +133,85 @@ def broadcast_message(channel: str, payload: dict):
             CONNECTIONS.remove(ws)
 
 
-def add_alert(alert: dict):
-    """Add Entity-State alert with deduplication. Supports both V3 and V4 formats."""
-    cam_id = alert.get("camera_id", "unknown")
-    # V4 uses 'new_state', V3 uses 'threat_type'
-    threat_type = alert.get("new_state") or alert.get("threat_type", "UNKNOWN")
-    entity_id = alert.get("entity_id", "")
-    cooldown_key = f"{threat_type}_{cam_id}_{entity_id}"
-    
-    now_ts = time.time()
-    last_fired = _alert_cooldown.get(cooldown_key, 0)
-    
-    # Entity-level cooldown: 10s per specific entity+state combo
-    # CRITICAL always passes through
-    if now_ts - last_fired < 10 and alert.get("threat_level") != "CRITICAL":
-        return
-    
-    _alert_cooldown[cooldown_key] = now_ts
-    
-    # Unified alert schema (Entity-State V4 + Legacy V3 compatible)
-    clean_alert = {
-        "camera_id":    str(cam_id).upper(),
-        "entity_id":    entity_id,
-        "base_class":   alert.get("base_class", ""),
-        "threat_type":  threat_type,
-        "threat_level": alert.get("threat_level", "INFO"),
-        "command":      alert.get("command", "MONITOR_SITUATION"),
-        "notify":       alert.get("notify", ["Security Monitor"]),
-        "escalation":   alert.get("escalation", []),
-        "timestamp":    alert.get("timestamp", datetime.datetime.now().isoformat()),
-        "confidence":   alert.get("confidence", 0.0),
-        "box":          alert.get("box", []),
-    }
-    
-    ALERTS.append(clean_alert)
-    if len(ALERTS) > MAX_ALERTS:
-        ALERTS.pop(0)
+def _frame_to_b64(frame) -> str:
+    """Encode an OpenCV frame to a base64 JPEG data URI."""
+    if frame is None or frame.size == 0:
+        return ""
+    try:
+        success, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        if not success:
+            return ""
+        return "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode()
+    except Exception as e:
+        print(f"[SnapShot-Error] {e}")
+        return ""
 
-    # Broadcast to Mission Control (WebSocket)
-    broadcast_message("alert", clean_alert)
+
+def add_alert(alert: dict, snapshot_b64: str = None):
+    """Add TICE-validated alert. Queues the best-confidence instance per loop cycle."""
+    cam_id = alert.get("camera_id", "unknown")
+    threat_type = alert.get("threat_type", "UNKNOWN")
+    key = f"{cam_id}_{threat_type}"
+
+    # Attach shared snapshot if available
+    if snapshot_b64:
+        alert["image"] = snapshot_b64
+
+    with _best_alerts_lock:
+        existing = _best_alerts.get(key)
+        if existing is None or alert.get("confidence", 0) >= existing.get("confidence", 0):
+            _best_alerts[key] = alert
+
+
+def _flush_best_alerts():
+    """Background thread: every ALERT_FLUSH_INTERVAL seconds, emit the best
+    queued alert per (camera, threat_type) pair to WebSocket and ALERTS list."""
+    while True:
+        time.sleep(ALERT_FLUSH_INTERVAL)
+        with _best_alerts_lock:
+            batch = list(_best_alerts.values())
+            _best_alerts.clear()
+
+        for alert in batch:
+            cam_id = alert.get("camera_id", "unknown")
+            threat_type = alert.get("threat_type", "UNKNOWN")
+            cooldown_key = f"{threat_type}_{cam_id}"
+            now_ts = time.time()
+
+            last_fired = _alert_cooldown.get(cooldown_key, 0)
+            if now_ts - last_fired < ALERT_COOLDOWN_SECONDS and alert.get("threat_level") != "CRITICAL":
+                continue
+
+            _alert_cooldown[cooldown_key] = now_ts
+
+            now_ts = time.time()
+            clean_alert = {
+                "id":          f"{cam_id}_{threat_type}_{int(now_ts * 1000)}",
+                "cam":         str(cam_id).upper(),
+                "ts":          now_ts,
+                "camera_id":   str(cam_id).upper(),
+                "threat_type": threat_type,
+                "threat_level": alert.get("threat_level", "INFO"),
+                "command":     alert.get("command", "MONITOR_SITUATION"),
+                "notify":      alert.get("notify", ["Security Monitor"]),
+                "escalation":  alert.get("escalation", []),
+                "timestamp":   datetime.datetime.fromtimestamp(now_ts).isoformat(),
+                "confidence":  alert.get("confidence", 0.0),
+                "image":       alert.get("image", ""),
+                "entity_id":   alert.get("entity_id", ""),
+                "base_class":  alert.get("base_class", ""),
+                "type":        alert.get("type", threat_type),
+                "severity":    alert.get("severity", alert.get("threat_level", "INFO").lower()),
+            }
+
+            ALERTS.append(clean_alert)
+            if len(ALERTS) > MAX_ALERTS:
+                ALERTS.pop(0)
+
+            broadcast_message("alert", clean_alert)
+
+# Start the alert flusher thread
+threading.Thread(target=_flush_best_alerts, daemon=True).start()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -180,7 +230,7 @@ class CameraWorker:
         self.resolution = (0, 0)
         self.latest_raw_frame = None
         self.latest_alerts = []
-        self.annotated_frame = None # Store pipeline output with squares
+        self.latest_entities: List[Any] = []
 
         # Decoupled buffer: capture thread writes, inference thread reads
         self._frame_buffer = deque(maxlen=2)  # Only keep latest 2 frames
@@ -194,17 +244,42 @@ class CameraWorker:
     def start(self):
         if self.is_running:
             return
-        if not self.source:
+        if self.source is None:
             print(f"[Worker {self.camera_id}] No source available, starting in standby.")
             
-        print(f"[Worker {self.camera_id}] Starting: {self.source}")
-        if self.source:
-            self.cap = cv2.VideoCapture(self.source)
+        # --- 1. SPECIAL CASE OVERRIDES -----------------------------------------
+        # CAM 3: Forced absolute file path for the Fire/Smoke demo
+        if self.camera_id == "cam3":
+            self.source = r"C:\Users\vauld\Downloads\WhatsApp Video 2026-03-30 at 11.27.57 PM.mp4"
+            print(f"[Worker cam3] FORCING ABSOLUTE SOURCE: {self.source}")
+
+        # CAM 5: Intelligent Webcam Auto-Scan for Live Demo
+        if self.camera_id == "cam5":
+            print(f"[Worker cam5] SCANNING FOR WEBCAM (0, 1, 2)...")
+            for sid in [0, 1, 2]:
+                self.cap = cv2.VideoCapture(sid)
+                if self.cap.isOpened():
+                    self.source = f"WEBCAM_{sid}"
+                    print(f"[Worker cam5] Successfully locked in Source {sid}.")
+                    break
+            if not self.cap.isOpened():
+                print(f"[Worker cam5] ALL WEBCAM SOURCES FAILED. Check if another app is using it!")
+
+        # --- 2. STANDARD INITIALIZATION --------------------------------------
+        if not self.cap or not self.cap.isOpened():
+            print(f"[Worker {self.camera_id}] Starting standard: {self.source}")
+            if self.source is not None:
+                self.cap = cv2.VideoCapture(self.source)
+
             if self.cap.isOpened():
                 ret, test_frame = self.cap.read()
                 if ret:
                     self.resolution = (test_frame.shape[1], test_frame.shape[0])
                     print(f"[Worker {self.camera_id}] Resolution: {self.resolution[0]}x{self.resolution[1]}")
+                else:
+                    print(f"[Worker {self.camera_id}] FAILED TO READ TEST FRAME.")
+            else:
+                print(f"[Worker {self.camera_id}] FAILED TO OPEN CAPTURE ENTIRELY.")
 
         self.is_running = True
         self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
@@ -256,41 +331,59 @@ class CameraWorker:
 
             ret, frame = self.cap.read()
             if not ret:
+                # For MP4 files: seamlessly LOOP back to start
+                if isinstance(self.source, str) and self.source.lower().endswith(".mp4"):
+                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    continue
                 self._consecutive_failures += 1
                 if self._consecutive_failures > 10:
                     self._reconnect()
                 continue
 
-            self._consecutive_failures = 0
-            self._frame_buffer.append(frame)
-            
-            # Smooth 30fps stream generation
-            display_frame = frame.copy()
-            # Draw latest known alerts onto the smooth video
-            for alert in self.latest_alerts:
-                box = alert.get("box", [])
-                if len(box) == 4:
-                    x1, y1, x2, y2 = map(int, box)
-                    severity = alert.get("severity", "").lower()
-                    if severity == "critical":
-                        color = (0, 0, 255)
-                        thick = 3
-                    elif severity == "high":
-                        color = (0, 165, 255)
-                        thick = 2
-                    else:
-                        color = (255, 255, 0) # Cyan/Yellow standard for generic tracking
-                        thick = 1
-                    cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, thick)
-                    cv2.putText(display_frame, alert.get("type", ""), (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, thick)
-            
-            _, jpg = cv2.imencode(".jpg", display_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            with self._frame_lock:
-                # Always keep raw frame updated for high-FPS fallback
-                self.current_frame = jpg.tobytes()
-                self.last_update = time.time()
+            try:
+                self._consecutive_failures = 0
+                self._frame_buffer.append(frame)
                 
-            time.sleep(0.01)  # Max ~100fps capture pacing
+                # Smooth 30fps stream generation
+                display_frame = frame.copy()
+                # Layer 1: Environmental Awareness (CROWD zones) - background
+                for e in self.latest_entities:
+                    if e.base_class == EntityClass.CROWD:
+                        x1, y1, x2, y2 = map(int, e.box)
+                        # Restore the large situational box for overcrowding
+                        color = (0, 0, 180) # Red-ish
+                        cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
+                        cv2.putText(display_frame, f"![!] {e.label}", (x1 + 10, y1 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                        
+                        # Semi-transparent red overlay
+                        rect_overlay = display_frame.copy()
+                        cv2.rectangle(rect_overlay, (x1, y1), (x2, y2), color, -1)
+                        cv2.addWeighted(rect_overlay, 0.15, display_frame, 0.85, 0, display_frame)
+
+                # Layer 2: Object-level Intel (PERSON, BAGGAGE, etc.) - foreground
+                for e in self.latest_entities:
+                    if e.base_class != EntityClass.CROWD:
+                        x1, y1, x2, y2 = map(int, e.box)
+                        # PERSON color is vivid Electric Blue (BGR 255, 60, 0)
+                        color = (255, 60, 0) if e.base_class == EntityClass.PERSON else (0, 255, 0)
+                        # Hazard escalations turn it Red
+                        if e.current_state != EntityState.BASE:
+                            color = (0, 0, 255)
+                        
+                        thick = 2
+                        cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, thick)
+                        label = f"{e.base_class.value.upper()}"
+                        cv2.putText(display_frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thick)
+                    
+                    _, jpg = cv2.imencode(".jpg", display_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    with self._frame_lock:
+                        self.current_frame = jpg.tobytes()
+                        self.last_update = time.time()
+                        
+                    time.sleep(0.02)
+            except Exception:
+                traceback.print_exc()
+                time.sleep(1.0)
 
     def _inference_loop(self):
         """Dedicated inference thread — pops latest frame from buffer, runs ML pipeline."""
@@ -312,13 +405,9 @@ class CameraWorker:
 
             try:
                 out_frame, alerts_tice, trajectories = pipeline.run(frame, self.camera_id)
-                self.latest_alerts = alerts_tice # TICE objects for overlay drawing
-                
-                # Encode annotated frame with squares
-                _, jpg_annotated = cv2.imencode(".jpg", out_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                with self._frame_lock:
-                    self.annotated_frame = jpg_annotated.tobytes()
-                    self.last_update = time.time()   # Heartbeat updated
+                self.latest_alerts = alerts_tice # TICE objects for alert broadcasting
+                self.latest_entities = pipeline.registry.get_all(self.camera_id) # FOR RENDERER
+                self.last_update = time.time()   # Heartbeat updated
  
                 # Throttled metric broadcast
                 now = time.time()
@@ -335,9 +424,11 @@ class CameraWorker:
                     })
                     last_broadcast = now
  
-                # TICE Alerts Integration
+                # TICE Alerts Integration — encode snapshot once per frame cycle
+                snapshot_b64 = _frame_to_b64(out_frame) if alerts_tice else None
+                
                 for alert in alerts_tice:
-                    add_alert(alert)
+                    add_alert(alert, snapshot_b64=snapshot_b64)
 
                     if _DB_AVAILABLE and alert.get("alert"):
                         try:
@@ -376,23 +467,51 @@ class CameraWorker:
 
 
 class MultiCameraManager:
-    # Map camera IDs to specific scenario video filenames (YouTube test downloads)
     SCENARIO_MAP = {
-        "cam1": "person_on_track.mp4",
-        "cam2": r"C:\Users\vauld\Downloads\WhatsApp Video 2026-03-30 at 6.40.17 PM.mp4", # User Crowd Video
-        "cam3": "fire_smoke.mp4",        # Fire / Smoke
-        "cam4": r"C:\Users\vauld\Downloads\WhatsApp Video 2026-03-30 at 5.01.16 PM.mp4", # User Verification Video
+        "cam1": r"C:\Users\vauld\Documents\GitHub\Railway-Surveillance-BitsGoa\backend\data\scenarios\Scenario1.mp4",
+        "cam2": r"C:\Users\vauld\Downloads\WhatsApp Video 2026-03-30 at 6.40.17 PM.mp4",
+        "cam3": r"C:\Users\vauld\Downloads\WhatsApp Video 2026-03-30 at 11.27.57 PM.mp4",
+        "cam4": r"C:\Users\vauld\Downloads\WhatsApp Video 2026-03-30 at 5.01.16 PM.mp4",
+        "cam5": 0,    # REAL-TIME LIVE WEBCAM DEMO
+        "cam7": "https://www.youtube.com/live/rnXIjl_Rzy4?si=0HnbKn8fm4EemFiV", # Live Overcrowded Place
     }
 
     def __init__(self):
         self.workers: Dict[str, CameraWorker] = {}
         self._project_root = Path(__file__).resolve().parent.parent
 
+    def _resolve_youtube_url(self, url: str) -> str:
+        """Use yt-dlp to extract the direct stream URL (m3u8)."""
+        print(f"[CameraManager] Resolving YouTube Live: {url}")
+        try:
+            # -g for URL, -f b for best video
+            cmd = ["yt-dlp", "-g", "-f", "b", url]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            stream_url = result.stdout.strip()
+            if stream_url:
+                print(f"[CameraManager] Successfully resolved live stream.")
+                return stream_url
+        except Exception as e:
+            print(f"[CameraManager] YouTube resolution FAILED: {e}")
+        return url
+
     def _resolve_source(self, camera_id: str):
         """Resolve video source for camera, checking multiple locations."""
-        # 1. Check test_videos/ (YouTube downloads at project root)
         scenario_file = self.SCENARIO_MAP.get(camera_id)
-        if scenario_file:
+        if not scenario_file and camera_id != "cam1":
+            return None
+
+        # 0. Check for YouTube URLs first
+        if isinstance(scenario_file, str) and ("youtube.com" in scenario_file or "youtu.be" in scenario_file):
+            return self._resolve_youtube_url(scenario_file)
+
+        # 1. Check if scenario_file is an absolute path that exists
+        if isinstance(scenario_file, str) and os.path.isabs(scenario_file) and os.path.exists(scenario_file):
+            print(f"[CameraManager] {camera_id} → Absolute path: {scenario_file}")
+            return scenario_file
+
+        # 2. Check test_videos/ (YouTube downloads at project root)
+        if isinstance(scenario_file, str):
             yt_path = self._project_root / "test_videos" / scenario_file
             if yt_path.exists():
                 print(f"[CameraManager] {camera_id} → YouTube clip: {yt_path.name}")
@@ -408,6 +527,11 @@ class MultiCameraManager:
         if camera_id == "cam1":
             return get_video_source()
 
+        # 4. ULTIMATE FALLBACK: Use the literal path from SCENARIO_MAP if available
+        if scenario_file:
+            print(f"[CameraManager] {camera_id} → Using SCENARIO_MAP literal: {scenario_file}")
+            return str(scenario_file)
+
         print(f"[CameraManager] {camera_id} → No source found, standby.")
         return None
 
@@ -419,7 +543,6 @@ class MultiCameraManager:
         return self.workers[camera_id]
 
     def start_all(self):
-        # Start all 4 scenario cameras automatically
         for cam_id in ["cam1", "cam2", "cam3", "cam4"]:
             self.get_worker(cam_id)
 
@@ -435,14 +558,7 @@ app.loop = None
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -460,7 +576,7 @@ def _failsafe_loop():
         time.sleep(2)
         now = time.time()
         for cam_id, worker in stream_manager.workers.items():
-            if worker.is_running and (now - worker.last_update) > 15.0:
+            if worker.is_running and (now - worker.last_update) > 3.0:
                 print(f"[FAILSAFE-CRITICAL] Inference hung on {cam_id}!")
                 failsafe_msg = {
                     "camera_id": cam_id.upper(),
@@ -470,7 +586,7 @@ def _failsafe_loop():
                 }
                 broadcast_message("system_alert", failsafe_msg)
 
-threading.Thread(target=_failsafe_loop, daemon=True).start()
+# threading.Thread(target=_failsafe_loop, daemon=True).start()
 
 @app.on_event("startup")
 async def startup_event():
@@ -489,6 +605,7 @@ def shutdown_event():
 
 
 @app.get("/stream/{camera_id}")
+@app.get("/api/video_feed/{camera_id}")
 async def video_feed(camera_id: str):
     worker = stream_manager.get_worker(camera_id)
 
@@ -505,11 +622,9 @@ async def video_feed(camera_id: str):
 
         while True:
             with worker._frame_lock:
-                # Prefer annotated frame (with squares) over raw frame
-                frame_data = worker.annotated_frame if worker.annotated_frame else worker.current_frame
-                
-                if frame_data and worker.last_update > last_frame_time:
+                if worker.current_frame and worker.last_update > last_frame_time:
                     last_frame_time = worker.last_update
+                    frame_data = worker.current_frame
                     no_frame_counter = 0
                 else:
                     frame_data = None
@@ -522,7 +637,7 @@ async def video_feed(camera_id: str):
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + fallback_bytes + b'\r\n')
                 
-            await asyncio.sleep(0.015)
+            await asyncio.sleep(0.03)
 
     return StreamingResponse(mjpeg_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
 
@@ -594,50 +709,53 @@ def change_stream_source(data: dict):
 @app.post("/api/bridge/toggle")
 def toggle_bridge():
     if _REMOTE_CLIENT:
-        new_mode = "remote" if _REMOTE_CLIENT.mode != "remote" else "local"
+        # Immediate toggle with lock protection
         with _REMOTE_CLIENT._lock:
+            new_mode = "remote" if _REMOTE_CLIENT.mode != "remote" else "local"
             _REMOTE_CLIENT.mode = new_mode
+            
             if new_mode == "local":
                 _REMOTE_CLIENT.is_connected = False
                 _REMOTE_CLIENT._consecutive_failures = 0
+                print("[RemoteClient] Bridge MANUAL DISABLE. Falling back to CPU.")
             else:
                 _REMOTE_CLIENT._consecutive_failures = 0
-
+                print(f"[RemoteClient] Bridge MANUAL ENABLE. Targeting: {_REMOTE_CLIENT.remote_url}")
+                # Don't set is_connected = False here; let detect_remote try optimistic path!
+        
+        # Trigger background health check if remote
         if new_mode == "remote":
             threading.Thread(target=_REMOTE_CLIENT._check_health, daemon=True).start()
 
-        return JSONResponse(status_code=200, content={"status": "toggled", "mode": new_mode})
-    return JSONResponse(status_code=400, content={"error": "Bridge disabled"})
+        return JSONResponse(status_code=200, content={"status": "toggled", "mode": new_mode, "connected": _REMOTE_CLIENT.is_connected})
+    return JSONResponse(status_code=400, content={"error": "Bridge bridge unit not found"})
 
-
-@app.post("/api/auth/token")
-def login_legacy(form_data: OAuth2PasswordRequestForm = Depends()):
-    if form_data.username == "admin" and form_data.password == "railguard":
-        token = create_access_token({"sub": form_data.username, "role": "soc_operator"})
-        return {"access_token": token, "token_type": "bearer"}
-    return JSONResponse(status_code=401, content={"detail": "Incorrect credentials"})
 
 class LoginRequest(BaseModel):
     operator_id: str
     password: str
 
 @app.post("/api/login")
-def login(req: LoginRequest):
-    """Zero-Trust JSON Login for SOC Dashboard."""
-    result = auth_engine.authenticate(req.operator_id, req.password)
-    return JSONResponse(content=result)
+def login_json(data: LoginRequest):
+    if data.operator_id == "admin" and data.password == "railguard":
+        token = create_access_token({"sub": data.operator_id, "role": "soc_operator"})
+        return {
+            "access_token": token,
+            "operator": {
+                "id": "OP-042",
+                "display_name": "Admin Operator",
+                "role": "SOC Lead",
+                "clearance": "Level 5"
+            }
+        }
+    return JSONResponse(status_code=401, content={"detail": {"message": "Authentication failed."}})
 
-@app.get("/api/verify")
-def verify_session(req: Request):
-    """Token verification for session persistence."""
-    auth_header = req.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return JSONResponse(status_code=401, content={"error": "Missing token"})
-    try:
-        auth_engine.decode_token(auth_header.split(" ")[1])
-        return {"ok": True}
-    except Exception:
-        return JSONResponse(status_code=401, content={"error": "Token expired"})
+@app.post("/api/auth/token")
+def login_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    if form_data.username == "admin" and form_data.password == "railguard":
+        token = create_access_token({"sub": form_data.username, "role": "soc_operator"})
+        return {"access_token": token, "token_type": "bearer"}
+    return JSONResponse(status_code=401, content={"detail": "Incorrect credentials"})
 
 
 @app.get("/video/{camera_id}")
@@ -674,7 +792,70 @@ def get_heatmap():
 
 @app.get("/api/tracklets")
 def get_system_tracklets():
-    return JSONResponse(content=[])
+    """Returns all active tracklets from the Neural ReID gallery."""
+    p = get_pipeline()
+    if not hasattr(p, "reid"):
+        return JSONResponse(content=[])
+        
+    tracklets = []
+    now = time.time()
+    
+    # 24-hour cleanup is already implicit in reset_minutes, but let's be explicit
+    # for the API display to only show 'active' (last seen in last 1 hour)
+    for tid, data in p.reid.gallery.items():
+        # Format journey string for UI
+        cameras = [record["camera"] for record in data["path"]]
+        unique_cams = []
+        for c in cameras:
+            if not unique_cams or unique_cams[-1] != c:
+                unique_cams.append(c)
+        
+        journey_str = " → ".join(unique_cams[-2:]) # Show last 2 hops
+        
+        tracklets.append({
+            "id": tid,
+            "status": data.get("status", "NORMAL"),
+            "cam": cameras[-1].upper() if cameras else "UNKNOWN",
+            "time": time.strftime("%H:%M:%S", time.localtime(data["last_seen"])),
+            "journey": journey_str,
+            "image": data.get("image", ""),
+            "cameras_seen": unique_cams,
+            "first_seen": data["path"][0]["time"] if data["path"] else now,
+            "last_seen": data["last_seen"],
+        })
+        
+    # Sort by most recent first
+    tracklets.sort(key=lambda x: x["last_seen"], reverse=True)
+    return JSONResponse(content=tracklets)
+
+
+@app.post("/api/tracklets/{track_id}/flag")
+def flag_tracklet(track_id: str):
+    p = get_pipeline()
+    if hasattr(p, "reid") and track_id in p.reid.gallery:
+        p.reid.gallery[track_id]["status"] = "FLAGGED"
+        return {"status": "success", "id": track_id}
+    return JSONResponse(status_code=404, content={"error": "Tracklet not found"})
+
+
+@app.post("/api/tracklets/{track_id}/clear")
+def clear_tracklet(track_id: str):
+    p = get_pipeline()
+    if hasattr(p, "reid") and track_id in p.reid.gallery:
+        p.reid.gallery[track_id]["status"] = "NORMAL"
+        return {"status": "success", "id": track_id}
+    return JSONResponse(status_code=404, content={"error": "Tracklet not found"})
+
+
+@app.delete("/api/tracklets")
+def purge_tracklets():
+    """Purge all tracklets to satisfy GDPR privacy requirements."""
+    p = get_pipeline()
+    if hasattr(p, "reid"):
+        p.reid.gallery.clear()
+        p.reid.last_reset = time.time()
+        return {"status": "purged", "count": 0}
+    return {"status": "no_reid_engine"}
 
 
 @app.get("/api/bridge-status")
@@ -700,4 +881,10 @@ def get_bridge_status():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8001, reload=False)
+    try:
+        # BINDING TO ALL INTERFACES FOR DEMO RELIABILITY
+        uvicorn.run(app, host="0.0.0.0", port=8001, reload=False, ws_ping_interval=300, ws_ping_timeout=300)
+    except Exception as e:
+        print(f"[CRITICAL ERROR] Server failed to start: {e}")
+        import traceback
+        traceback.print_exc()

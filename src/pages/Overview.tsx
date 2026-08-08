@@ -428,8 +428,15 @@ function AlertItem({ type, time, desc, actions, critical, warning, info, metadat
   return (
     <div className={`border-l-2 p-4 bg-[#05080F] ${critical ? 'border-red-500' : warning ? 'border-yellow-500' : 'border-slate-600'}`}>
       <div className="flex justify-between items-start mb-2">
-        <span className={`text-[10px] font-bold tracking-wider ${critical ? 'text-red-400' : warning ? 'text-yellow-400' : 'text-slate-400'}`}>{type}</span>
-        <span className="text-[10px] text-slate-500 font-mono">{time}</span>
+        <div className="flex flex-col">
+          <span className={`text-[10px] font-bold tracking-wider ${critical ? 'text-red-400' : warning ? 'text-yellow-400' : 'text-slate-400'}`}>{type}</span>
+          <span className="text-[10px] text-slate-500 font-mono">{time}</span>
+        </div>
+        {metadata?.image && (
+          <div className="w-12 h-12 rounded border border-slate-700 overflow-hidden bg-slate-900">
+            <img src={metadata.image} alt="Threat" className="w-full h-full object-cover opacity-80" />
+          </div>
+        )}
       </div>
       <p className="text-sm text-slate-200 mb-2 font-bold">{desc}</p>
       
