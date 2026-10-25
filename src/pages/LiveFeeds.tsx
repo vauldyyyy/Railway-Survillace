@@ -241,7 +241,7 @@ export function LiveFeeds({ onNavigate }: { onNavigate?: (page: any) => void }) 
           </span>
         ))}
         <span className="ml-auto text-[10px] font-mono text-slate-500">
-          ENC: AES-256-GCM | DP: ε=1.2 | OPERATOR: RPF_GOA_01
+          ENC: AES-256-GCM | RE-ID NOISE: σ=0.01 | OPERATOR: RPF_GOA_01
         </span>
       </div>
 

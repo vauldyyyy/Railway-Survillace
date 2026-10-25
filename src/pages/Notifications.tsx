@@ -18,7 +18,7 @@ const NOTIFICATIONS = [
     icon: <Info size={16} className="text-cyan-400" />,
     title: "System Update Available",
     time: "1 hour ago",
-    desc: "OSNET-V4.1 weights are available for download. Improves Re-ID accuracy by 2.4%.",
+    desc: "A dedicated re-ID model (e.g. OSNet trained on Market-1501) could replace the MobileNetV3 embedder.",
     unread: true
   },
   {

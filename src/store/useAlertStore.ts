@@ -35,7 +35,7 @@ export const ALERT_TYPES: Record<string, { label: string; severity: AlertSeverit
   FOREIGN_OBJECT:        { label: 'Foreign Object on Track', severity: 'high',    model: 'YOLO-World' },
   ANIMAL_ON_TRACK:       { label: 'Animal on Track',         severity: 'high',    model: 'YOLO-World' },
   CROWD_RISK:            { label: 'Crowd Surge Risk',        severity: 'high',    model: 'Density Counter' },
-  PERSON_TRACKED:        { label: 'Person Tracked',          severity: 'info',    model: 'OSNet ReID' },
+  PERSON_TRACKED:        { label: 'Person Tracked',          severity: 'info',    model: 'MobileNetV3 Re-ID' },
 };
 
 export const SEVERITY_CONFIG = {

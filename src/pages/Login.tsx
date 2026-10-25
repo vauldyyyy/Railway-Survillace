@@ -24,7 +24,7 @@ const BOOT_LINES = [
   '> Loading YOLOv8n model weights... OK',
   '> Binding CamGear streams [6/6]... OK',
   '> AES-256-GCM encryption layer... ACTIVE',
-  '> Differential privacy engine (ε=1.2)... ACTIVE',
+  '> Re-ID embedding perturbation (σ=0.01)... ACTIVE',
   '> Adversarial patch defense... ACTIVE',
   '> Prompt injection guard... ACTIVE',
   '> JWT HS256 auth service... LISTENING',
@@ -265,7 +265,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
                 { label: 'ENCRYPTION',  value: 'AES-256-GCM', color: 'emerald' },
                 { label: 'AUTH',        value: 'JWT HS256',    color: 'cyan'    },
                 { label: 'HASH',        value: 'ARGON2ID',     color: 'violet'  },
-                { label: 'PRIVACY',     value: 'DP ε=1.2',     color: 'amber'   },
+                { label: 'PRIVACY',     value: 'Re-ID σ=0.01',     color: 'amber'   },
               ].map(b => (
                 <div key={b.label}
                      className={`bg-slate-900/60 border border-slate-800 rounded px-3 py-2`}>

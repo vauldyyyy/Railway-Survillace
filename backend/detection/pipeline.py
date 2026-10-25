@@ -45,7 +45,7 @@ class SurveillancePipeline:
 
         # Detection
         self.yolo = ZeroShotDetector()
-        self.reid = ReIDTracker(threshold=0.75, epsilon=1.2)
+        self.reid = ReIDTracker(threshold=0.75)
         self.zone_detector = ZoneIntrusionDetector()
         self.remote_client = remote_client if _REMOTE_AVAILABLE else None
 

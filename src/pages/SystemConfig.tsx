@@ -32,7 +32,7 @@ export function SystemConfig({ onNavigate }: { onNavigate?: (page: any) => void 
               <Settings size={18} className="text-cyan-400" /> Privacy & Retention
             </h3>
             <div className="space-y-4">
-              <ConfigToggle label="Enable Differential Privacy (Re-ID)" active={true} />
+              <ConfigToggle label="Perturb Re-ID Embeddings Before Storage" active={true} />
               <ConfigToggle label="Auto-blur Faces (Non-Threats)" active={false} />
               <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
                 <span className="text-sm text-slate-300">Data Retention Period</span>

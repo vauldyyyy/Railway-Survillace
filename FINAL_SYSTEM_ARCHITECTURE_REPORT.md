@@ -16,7 +16,7 @@ Our architecture leverages modern, high-concurrency frameworks to handle real-ti
     *   **Streaming**: Thread-safe Multi-MJPEG concurrent emitters.
     *   **Concurrency**: Asynchronous event loop for WebSocket orchestration.
     *   **Security**: AES-256-GCM Encrypted SQLite Incident Database.
-*   **AI Engine**: YOLOv8s + OSNet Re-Identification
+*   **AI Engine**: YOLOv8s + MobileNetV3 re-identification
     *   **Logic**: Custom State Machine for "Baggage Ownership" and "Track Intrusion."
 
 ---
@@ -45,7 +45,7 @@ Precisely tracks the spatial proximity between a person and their bag. If the se
 ---
 
 ## 4. Privacy & Forensic Security
-*   **ReID Privacy**: To comply with data safety standards, our Re-Identification (ReID) vectors use **Differential Privacy** (noise injection). This allows tracking individuals across cameras without storing sensitive biometric templates.
+*   **ReID Privacy**: To comply with data safety standards, our re-identification embeddings are noise-perturbed before storage and purged hourly (a practical safeguard, not formal differential privacy).
 *   **Encrypted Incident Logs**: Every alert, snapshot, and tracking event is stored in an encrypted vault. Only authorized SOC operators with the decryption key can view historical incident data.
 
 ---

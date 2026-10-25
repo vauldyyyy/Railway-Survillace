@@ -23,7 +23,7 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
   const pipelineModels = [
     { key: 'coco', name: 'YOLO-World', desc: 'Zero-Shot Vision', color: 'cyan', icon: <Cpu size={14} /> },
     { key: 'railfod', name: 'RailFOD v8', desc: 'Object Detection', color: 'violet', icon: <Zap size={14} /> },
-    { key: 'tracker', name: 'OSNet ReID', desc: 'Cross-Camera Track', color: 'amber', icon: <UserSearch size={14} /> },
+    { key: 'tracker', name: 'Re-ID', desc: 'Cross-Camera Track', color: 'amber', icon: <UserSearch size={14} /> },
     { key: 'lstm', name: 'LSTM v2.4', desc: 'Crowd Forecast', color: 'emerald', icon: <Users size={14} /> },
     { key: 'uav', name: 'SecureGuard', desc: 'Adversarial Defense', color: 'rose', icon: <Shield size={14} /> },
   ];
@@ -182,7 +182,7 @@ export function Overview({ onNavigate }: { onNavigate?: (page: any) => void }) {
           {/* Security footer */}
           <div className="mt-3 pt-3 border-t border-slate-800/50 flex items-center gap-6 text-[9px] font-mono text-slate-600">
             <span className="flex items-center gap-1"><Lock size={9} className="text-emerald-500" /> AES-256-GCM DB ENCRYPTION</span>
-            <span className="flex items-center gap-1"><Shield size={9} className="text-cyan-500" /> DIFFERENTIAL PRIVACY ε=1.2</span>
+            <span className="flex items-center gap-1"><Shield size={9} className="text-cyan-500" /> RE-ID PRIVACY SAFEGUARDS</span>
             <span className="flex items-center gap-1"><Zap size={9} className="text-violet-500" /> ADVERSARIAL PATCH DEFENSE</span>
             <span className="flex items-center gap-1"><Lock size={9} className="text-amber-500" /> PROMPT INJECTION GUARD</span>
             <span className="ml-auto text-slate-500">THREAT INDEX: <span className={threatLevel === 'CRITICAL' ? 'text-red-400 glow-text-red' : threatLevel === 'HIGH' ? 'text-yellow-400' : 'text-emerald-400'}>{threatScore.toFixed(1)}/10 [{threatLevel}]</span></span>

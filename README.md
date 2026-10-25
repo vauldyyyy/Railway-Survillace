@@ -1,6 +1,6 @@
 # RailGuard AI — Railway Surveillance SOC
 
-**A real-time Security Operations Centre for railway platforms: five threat classes detected across live camera feeds, with cross-camera person re-identification under differential privacy.**
+**A real-time Security Operations Centre for railway platforms: five threat classes detected across live camera feeds, with privacy-aware cross-camera person re-identification.**
 
 Built for the AI Systems & Software Hackathon (BITS Pilani × IIT Madras).
 
@@ -61,7 +61,7 @@ src/                      React 19 + TypeScript SOC dashboard
 
 **Entity state machine, not per-frame detection.** `detection/entity_state.py` tracks objects across frames rather than raising an alert per detection. "A bag has been stationary and unattended for N seconds" is an incident; "a bag is visible" is not. This is what keeps the alert volume low enough that operators keep the system on.
 
-**Differential privacy on re-identification.** Cross-camera person tracking uses OSNet embeddings with calibrated noise (ε=0.1). Re-identifying individuals across a public transport network is a surveillance capability with real misuse potential; the noise budget is a deliberate constraint on how precisely any single person can be followed.
+**Privacy-aware re-identification.** Cross-camera person matching uses pooled MobileNetV3-Small embeddings (576-d) with cosine matching, one-to-one assignment within a frame, and an EMA identity template. Embeddings are perturbed with small Gaussian noise before storage and the gallery is purged hourly; thumbnails can be disabled. This is a practical safeguard, not a formal differential-privacy guarantee. An earlier version advertised "ε-DP" while adding noise large enough (σ=0.12 per dimension) to make every sighting a new identity; `backend/tests/` now carries a regression test for that.
 
 **Prompt sanitisation.** The LLM scene-description path takes model output and camera metadata as input. `security/prompt_sanitizer.py` exists because that is an injection surface, not a text field.
 
@@ -72,7 +72,7 @@ src/                      React 19 + TypeScript SOC dashboard
 | Layer | Technology |
 |---|---|
 | Detection | YOLOv8s (custom-trained), YOLO-World (open-vocabulary) |
-| Re-identification | OSNet + differential privacy |
+| Re-identification | MobileNetV3-Small embeddings, cosine matching, noise-perturbed storage |
 | Backend | Python, FastAPI, WebSockets |
 | Vision | OpenCV, PyTorch |
 | Frontend | React 19, TypeScript, Zustand |
@@ -110,3 +110,11 @@ An honest list of what a reviewer would find:
 ## License
 
 Not currently licensed.
+
+## Tests
+
+```bash
+cd backend && pip install numpy opencv-python-headless pytest && python -m pytest -q tests
+```
+
+Covers re-identification (identity persistence across frames and cameras, no merging of look-alikes in one frame, gallery purge and bounds, the noise-scale regression), unattended-baggage timing with scale-aware proximity and alert cooldown, the temporal confirmation filter, and zone intrusion. Runs in CI on every push.

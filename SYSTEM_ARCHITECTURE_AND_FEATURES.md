@@ -13,11 +13,11 @@ Instead of relying on a narrowly trained, rigid object detector, we implemented 
 * **Context-Aware Adaptation:** In specific conditions (like low-light), the system dynamically injects additional prompts (e.g., `["flashlight"]`) to improve scene understanding without requiring model retraining.
 * **Threat Severities:** Detections are automatically classified. Identifying a "person" or "backpack" triggers standard tracking, while detecting "weapon", "fire", or "smoke" automatically escalates to a `critical` severity alert.
 
-## 2. Advanced Cross-Camera Tracking (OSNet Re-Identification)
+## 2. Cross-Camera Tracking (Re-Identification)
 To maintain persistent tracking across multiple non-overlapping camera feeds in the railway station, we implemented a sophisticated Re-Identification (ReID) layer.
 
-* **Omni-Scale Network (OSNet):** Extracts deep visual features from detected persons, invariant to changes in camera angle, lighting, or pose.
-* **Differential Privacy:** To ensure compliance with modern privacy standards, the ReID feature vectors undergo noise-injection (Differential Privacy with $\epsilon = 0.1$). This prevents the exact biometric reconstruction of individuals while still allowing the system to match global tracks.
+* **Embeddings:** Global-average-pooled MobileNetV3-Small features (576-d, ImageNet weights), L2-normalised, matched by cosine similarity with one-to-one assignment per frame. A dedicated re-ID model (e.g. OSNet trained on Market-1501) would improve cross-camera robustness.
+* **Privacy safeguards:** Embeddings are perturbed with small Gaussian noise before storage and purged hourly. This is not a formal differential-privacy guarantee.
 * **Global Trajectory Mapping:** The system assigns a unique UUID to individuals and plots their trajectory seamlessly as they move from platform to platform.
 
 ## 3. Persistent Inference GPU Bridge (Cloud Offloading)

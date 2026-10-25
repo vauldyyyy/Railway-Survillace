@@ -44,21 +44,21 @@ const AGENTS = [
   },
   {
     id: 'osnet-reid',
-    name: 'OSNet Re-ID Tracker',
+    name: 'Re-ID Tracker',
     type: 'Cross-Camera Person Tracking',
-    arch: 'OSNet (512-dim)',
+    arch: 'MobileNetV3-Small (576-dim)',
     modelKey: 'tracker',
     color: 'amber',
     icon: Database,
     cameras: ['ALL 6 CAMERAS (Zero-Knowledge)'],
     tasks: ['Cross-Camera Person Re-Identification', 'Trajectory Mapping', 'Dwell Time Analysis'],
     params: [
-      { k: 'Embedding', v: '512-dim L2-norm' },
+      { k: 'Embedding', v: '576-dim L2-norm' },
       { k: 'Threshold', v: 'cosine ≤ 0.72' },
       { k: 'DP Noise', v: 'σ=0.1 Gaussian' },
-      { k: 'Privacy', v: 'ε=1.2 guaranteed' },
+      { k: 'Privacy', v: 'noise σ=0.01 + hourly purge' },
     ],
-    badge: 'DIFFERENTIAL PRIVACY',
+    badge: 'PRIVACY SAFEGUARDS',
   },
   {
     id: 'lstm',
@@ -110,7 +110,7 @@ const COLOR_MAP: Record<string, { border: string; bg: string; text: string; pill
 
 const LOG_TEMPLATES = [
   (fps: number) => `[YOLO-World] Frame inference @ ${fps.toFixed(1)} FPS — 0 detections`,
-  (fps: number) => `[OSNet-ReID] Gallery updated — ${Math.floor(Math.random()*5)+1} tracklets active`,
+  (fps: number) => `[ReID] Gallery updated — ${Math.floor(Math.random()*5)+1} tracklets active`,
   (fps: number) => `[LSTM] Crowd density prediction: ${(0.2 + Math.random()*0.5).toFixed(2)} risk score`,
   (fps: number) => `[TempFilter] Kalman update — 0 confirmed alerts`,
   (fps: number) => `[RailFOD] Inference complete — no objects flagged`,

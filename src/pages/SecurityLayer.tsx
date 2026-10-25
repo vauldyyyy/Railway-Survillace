@@ -23,13 +23,13 @@ const AI_PROTECTIONS = [
     id: 'privacy',
     icon: Eye,
     color: 'cyan',
-    title: 'Differential Privacy',
+    title: 'Re-ID Privacy Safeguards',
     subtitle: 'Re-ID Embedding Obfuscation',
-    description: 'OSNet 512-dim Re-ID embeddings are injected with calibrated Gaussian noise (σ=0.1) before storage, satisfying ε=1.2 privacy guarantee — biometric reconstruction is mathematically prevented.',
-    tech: ['Gaussian Noise σ=0.1', 'Privacy Budget ε=1.2', 'L2 Sensitivity δ=1e-5', 'Per-embedding Clipping'],
+    description: 'Re-ID embeddings (MobileNetV3, 576-dim) are perturbed with small Gaussian noise before storage and the gallery is purged hourly. A practical safeguard, not a formal differential-privacy guarantee.',
+    tech: ['Gaussian Noise σ=0.01', 'L2 Re-normalisation', 'Hourly Gallery Purge', 'Optional Thumbnails'],
     status: 'ACTIVE',
     metric: 'Privacy Budget',
-    metricValue: 'ε = 1.2',
+    metricValue: 'σ = 0.01',
     metricColor: 'text-cyan-400',
   },
   {
@@ -119,7 +119,7 @@ const INITIAL_EVENTS = [
   { t: '14:41:55', type: 'BLOCK',  msg: 'Prompt injection attempt sanitized from OCR pipeline' },
   { t: '14:41:33', type: 'INFO',   msg: 'DB encryption: 3 new incident records sealed (AES-256-GCM)' },
   { t: '14:41:01', type: 'WARN',   msg: 'Camera CAM-03 SSIM dropped to 0.62 — tamper check passed' },
-  { t: '14:40:44', type: 'INFO',   msg: 'Privacy budget remaining: ε = 0.48 (session)' },
+  { t: '14:40:44', type: 'INFO',   msg: 'Re-ID gallery purge scheduled (60 min TTL)' },
 ];
 
 // ── Main Component ─────────────────────────────────────────────────────────
@@ -253,7 +253,7 @@ export function SecurityLayer({ onNavigate }: { onNavigate?: (page: any) => void
               { label: 'ML Confidence', value: `${globalConfidence.toFixed(1)}%`, color: 'text-cyan-400', icon: Activity },
               { label: 'Protected Channels', value: '6 Cams', color: 'text-emerald-400', icon: Shield },
               { label: 'Incidents Encrypted', value: 'AES-256', color: 'text-rose-400', icon: Lock },
-              { label: 'DP Privacy Budget', value: 'ε = 1.2', color: 'text-violet-400', icon: Eye },
+              { label: 'Re-ID Noise', value: 'σ = 0.01', color: 'text-violet-400', icon: Eye },
             ].map(m => {
               const MIcon = m.icon;
               return (

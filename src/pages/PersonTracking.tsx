@@ -182,7 +182,7 @@ export function PersonTracking({ onNavigate }: { onNavigate?: (page: any) => voi
     <div className="flex flex-col h-full">
       <Header
         title="Multi-Camera Person Re-Identification — Zero-Knowledge Mode"
-        subtitle="OSNET 512-DIM EMBEDDINGS • DIFFERENTIAL PRIVACY PROTECTED (ε=1.2)"
+        subtitle="MOBILENETV3 576-DIM EMBEDDINGS • NOISE-PERTURBED STORAGE"
         onNavigate={onNavigate}
       >
         {/* Backend status pill */}
@@ -380,8 +380,8 @@ export function PersonTracking({ onNavigate }: { onNavigate?: (page: any) => voi
                   )}
                   <div className="absolute bottom-0 left-0 right-0 z-10 px-4 py-2 bg-gradient-to-t from-black/80 to-transparent">
                     <div className="flex justify-between text-[9px] font-mono text-slate-400">
-                      <span>OSNET-512D | MobileNetV3-Small</span>
-                      <span>{reidProcessing ? 'EMBEDDING: 512-DIM' : 'INITIALIZING...'}</span>
+                      <span>MobileNetV3-Small | 576-D</span>
+                      <span>{reidProcessing ? 'EMBEDDING: 576-DIM' : 'INITIALIZING...'}</span>
                       <span>DP: \u03B5=1.2 | AES-256-GCM</span>
                     </div>
                   </div>
@@ -476,11 +476,11 @@ export function PersonTracking({ onNavigate }: { onNavigate?: (page: any) => voi
             </div>
             <div className="flex-1 min-w-0">
               <h4 className="text-sm font-semibold text-emerald-400 mb-1">
-                Privacy Notice: Differential Privacy Active
+                Privacy Notice: Re-ID Safeguards Active
               </h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                All Re-ID embeddings are generated and stored with Gaussian Differential Privacy noise
-                (σ=0.1, ε=1.2). Biometric reconstruction from feature vectors is mathematically prevented.
+                Re-ID embeddings are perturbed with small Gaussian noise before storage and purged hourly.
+                This is a practical safeguard, not a formal differential-privacy guarantee.
                 No PII is stored alongside tracklets. Logs are purged after 24 hours.
               </p>
             </div>
